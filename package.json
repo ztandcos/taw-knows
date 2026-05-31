@@ -1,0 +1,32 @@
+{
+  "name": "taw-knows",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:client": "vite --host 127.0.0.1",
+    "dev:server": "node --watch server/index.mjs",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "start": "node server/index.mjs"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^6.0.2",
+    "better-sqlite3": "^12.4.6",
+    "concurrently": "^9.2.1",
+    "date-fns": "^4.1.0",
+    "express": "^5.1.0",
+    "gray-matter": "^4.0.3",
+    "lucide-react": "^0.555.0",
+    "markdown-it": "^14.1.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "vite": "^8.0.14"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^5.9.3"
+  }
+}

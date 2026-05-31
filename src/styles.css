@@ -1,0 +1,408 @@
+:root {
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #1f2428;
+  background: #f6f5ef;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 320px 1fr;
+}
+
+.sidebar {
+  background: #173f3a;
+  color: #f8faf7;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.brand p,
+.muted,
+.knownDates p,
+.systemInfo p {
+  margin: 0;
+  color: #d9e7dc;
+  font-size: 13px;
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+}
+
+.segmented button,
+.dateControls button,
+.dateList button,
+.iconText,
+.primary,
+.chatInput button {
+  min-height: 38px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.segmented button {
+  background: transparent;
+  color: #edf5ef;
+}
+
+.segmented button.active,
+.dateList button.current {
+  background: #f3c969;
+  color: #183d39;
+}
+
+.dateBox label,
+.knownDates h2 {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #eaf3ec;
+}
+
+.dateControls {
+  display: grid;
+  grid-template-columns: 38px 1fr 38px;
+  gap: 8px;
+}
+
+.dateControls button,
+.dateControls input {
+  background: #f8faf7;
+  color: #173f3a;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+
+.dateControls input {
+  padding: 0 10px;
+}
+
+.dateList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dateList button {
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.13);
+  color: #f8faf7;
+}
+
+.systemInfo {
+  margin-top: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.systemInfo p {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  overflow-wrap: anywhere;
+}
+
+.content {
+  padding: 28px;
+  min-width: 0;
+}
+
+.pageGrid,
+.weekGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 390px;
+  gap: 22px;
+  align-items: start;
+}
+
+.mainPanel,
+.summaryPanel,
+.chatPanel {
+  background: #fffefa;
+  border: 1px solid #e3dfd0;
+  border-radius: 8px;
+  padding: 22px;
+  box-shadow: 0 10px 28px rgba(20, 36, 32, 0.07);
+}
+
+.panelHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.eyebrow {
+  color: #98733d;
+  font-size: 12px;
+  margin: 0 0 5px;
+  text-transform: uppercase;
+}
+
+h2,
+h3 {
+  margin: 0;
+}
+
+h2 {
+  font-size: 28px;
+}
+
+h3 {
+  font-size: 18px;
+}
+
+.iconText {
+  padding: 0 12px;
+  background: #e8eee9;
+  color: #173f3a;
+}
+
+.primary {
+  padding: 0 14px;
+  background: #23675e;
+  color: white;
+}
+
+.primary:disabled,
+.chatInput button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.progressLine {
+  height: 9px;
+  background: #e8eee9;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progressLine span {
+  display: block;
+  height: 100%;
+  background: #d88a49;
+}
+
+.taskList,
+.summaryHistory,
+.messages {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.taskRow {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 10px;
+  padding: 12px;
+  background: #f8f5eb;
+  border: 1px solid #ebe2cf;
+  border-radius: 8px;
+}
+
+.taskRow p,
+.taskRow span,
+.summaryHistory p,
+.summaryHistory time,
+.message p {
+  margin: 0;
+}
+
+.taskRow span,
+.summaryHistory time {
+  color: #7a7f78;
+  font-size: 12px;
+}
+
+.done {
+  color: #2f8e68;
+}
+
+.todo {
+  color: #b47a41;
+}
+
+.emptyState {
+  padding: 18px;
+  background: #f8f5eb;
+  border-radius: 8px;
+  color: #77736a;
+}
+
+.notesPreview {
+  margin-top: 28px;
+}
+
+.noteBlock {
+  margin-top: 12px;
+  border-top: 1px solid #e3dfd0;
+  padding-top: 14px;
+}
+
+.noteBlock header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #4a514c;
+}
+
+.noteBlock header span {
+  color: #8b8d87;
+  font-size: 12px;
+}
+
+.markdown {
+  line-height: 1.65;
+}
+
+.markdown ul {
+  padding-left: 20px;
+}
+
+.summaryPanel,
+.chatPanel {
+  position: sticky;
+  top: 24px;
+}
+
+textarea {
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  border: 1px solid #d6d1c4;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 16px 0 12px;
+  background: #fffdf8;
+  color: #1f2428;
+}
+
+.summaryHistory article,
+.message {
+  padding: 12px;
+  border-radius: 8px;
+  background: #f8f5eb;
+  border: 1px solid #ebe2cf;
+  white-space: pre-wrap;
+}
+
+.weeklyText {
+  min-height: 460px;
+  white-space: pre-wrap;
+  line-height: 1.65;
+  margin: 0;
+  background: #f8f5eb;
+  border: 1px solid #ebe2cf;
+  border-radius: 8px;
+  padding: 16px;
+  color: #1f2428;
+}
+
+.chatTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.message span {
+  display: block;
+  color: #7d694d;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.message.user {
+  background: #edf5ef;
+}
+
+.chatInput {
+  display: grid;
+  grid-template-columns: 1fr 42px;
+  gap: 8px;
+  align-items: end;
+  margin-top: 14px;
+}
+
+.chatInput textarea {
+  min-height: 74px;
+  margin: 0;
+}
+
+.chatInput button {
+  background: #23675e;
+  color: white;
+  height: 42px;
+}
+
+.error {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: #fff1ef;
+  color: #a23d2f;
+  border: 1px solid #f1c5bd;
+  border-radius: 8px;
+}
+
+@media (max-width: 980px) {
+  .shell,
+  .pageGrid,
+  .weekGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+  }
+
+  .summaryPanel,
+  .chatPanel {
+    position: static;
+  }
+}
