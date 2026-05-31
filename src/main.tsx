@@ -7,14 +7,16 @@ import {
   ChevronLeft,
   ChevronRight,
   Circle,
-  Database,
   FileText,
   FileUp,
+  Menu,
   MessageSquareText,
+  Moon,
   RefreshCw,
   Save,
   Send,
   Sparkles,
+  Sun,
   Trash2
 } from "lucide-react";
 import "./styles.css";
@@ -115,7 +117,16 @@ type DocumentPreview = {
   }>;
 };
 
-const today = new Date().toISOString().slice(0, 10);
+type Theme = "light" | "dark";
+
+function formatDateLocal(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+const today = formatDateLocal(new Date());
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -130,9 +141,10 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 function shiftDate(date: string, days: number) {
-  const next = new Date(`${date}T00:00:00`);
+  const [year, month, day] = date.split("-").map(Number);
+  const next = new Date(year, month - 1, day);
   next.setDate(next.getDate() + days);
-  return next.toISOString().slice(0, 10);
+  return formatDateLocal(next);
 }
 
 function scopeFromView(view: View): Scope {
@@ -153,6 +165,7 @@ function rangeTitle(scope: Scope, date: string) {
 function App() {
   const [view, setView] = useState<View>("day");
   const [date, setDate] = useState(today);
+  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem("theme") === "dark" ? "dark" : "light"));
   const [dates, setDates] = useState<string[]>([]);
   const [config, setConfig] = useState<Config | null>(null);
   const [progress, setProgress] = useState<Progress>({ total: 0, completed: 0, percent: 0 });
@@ -162,6 +175,7 @@ function App() {
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
   const [preview, setPreview] = useState<DocumentPreview | null>(null);
   const [day, setDay] = useState<DayPayload | null>(null);
+  const [manualTaskDraft, setManualTaskDraft] = useState("");
   const [summaryDraft, setSummaryDraft] = useState("");
   const [rangeSummary, setRangeSummary] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -169,6 +183,7 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [datesOpen, setDatesOpen] = useState(false);
 
   const dayCompletion = useMemo(() => {
     const tasks = day?.tasks || [];
@@ -177,6 +192,11 @@ function App() {
   }, [day]);
 
   const aiDisabled = !llm.ok || busy;
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("theme", theme);
+  }, [theme]);
 
   async function refreshBase(nextDate = date) {
     const [configPayload, datesPayload, progressPayload, documentsPayload, dayPayload, llmPayload] = await Promise.all([
@@ -314,6 +334,25 @@ function App() {
     }
   }
 
+  async function addManualTask() {
+    const text = manualTaskDraft.trim();
+    if (!text) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify({ date, text })
+      });
+      setManualTaskDraft("");
+      await refreshBase(date);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "添加任务失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveSummary() {
     if (!summaryDraft.trim()) return;
     setBusy(true);
@@ -361,9 +400,15 @@ function App() {
         method: "POST",
         body: JSON.stringify(body)
       });
-      setLlm(payload);
       setLlmForm((current) => ({ ...current, apiUrl: "", apiKey: "" }));
-      setNotice("API 配置已保存。请点击“检查大模型”验证后启用 AI 功能。");
+      if (payload.settings?.configured) {
+        const checked = await api<LlmStatus>("/api/llm/check", { method: "POST" });
+        setLlm(checked);
+        setNotice(checked.ok ? "API 配置已保存，大模型检查通过。" : "API 配置已保存，但大模型检查失败。");
+      } else {
+        setLlm(payload);
+        setNotice("API 配置已保存，请补全 API Key 和模型名称。");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存 API 配置失败");
     } finally {
@@ -451,12 +496,6 @@ function App() {
           </p>
         </div>
 
-        <label className="uploadBox">
-          <FileUp size={18} />
-          <span>提交 Markdown 文件</span>
-          <input type="file" accept=".md,text/markdown,text/plain" onChange={(event) => event.target.files?.[0] && importFile(event.target.files[0])} />
-        </label>
-
         <div className="segmented four">
           <button className={view === "day" ? "active" : ""} onClick={() => changeView("day")}>
             <CalendarDays size={16} /> 当日
@@ -472,118 +511,146 @@ function App() {
           </button>
         </div>
 
-        <div className="documentList">
-          <h2>已导入文件</h2>
-          {documents.length ? (
-            documents.map((document) => (
-              <div key={document.id} className={document.id === selectedDocumentId ? "documentRow current" : "documentRow"}>
-                <button
-                  className="documentOpen"
-                  onClick={() => {
-                    setView("preview");
-                    refreshPreview(document.id).catch((err) => setError(err.message));
-                  }}
-                >
-                  <span>{document.filename}</span>
-                  <small>
-                    {document.dayCount} 天 · {document.taskCount} 任务
-                  </small>
+        <details className="functionMenu">
+          <summary>
+            <Menu size={17} />
+            <span>功能菜单</span>
+          </summary>
+
+          <div className="menuBody">
+            <div className="themeSwitch">
+              <button className={theme === "light" ? "active" : ""} onClick={() => setTheme("light")}>
+                <Sun size={15} /> 日间
+              </button>
+              <button className={theme === "dark" ? "active" : ""} onClick={() => setTheme("dark")}>
+                <Moon size={15} /> 夜间
+              </button>
+            </div>
+
+            <label className="uploadBox">
+              <FileUp size={18} />
+              <span>提交 Markdown 文件</span>
+              <input type="file" accept=".md,text/markdown,text/plain" onChange={(event) => event.target.files?.[0] && importFile(event.target.files[0])} />
+            </label>
+
+            <div className="documentList">
+              <h2>已导入文件</h2>
+              {documents.length ? (
+                documents.map((document) => (
+                  <div key={document.id} className={document.id === selectedDocumentId ? "documentRow current" : "documentRow"}>
+                    <button
+                      className="documentOpen"
+                      onClick={() => {
+                        setView("preview");
+                        refreshPreview(document.id).catch((err) => setError(err.message));
+                      }}
+                    >
+                      <span>{document.filename}</span>
+                      <small>
+                        {document.dayCount} 天 · {document.taskCount} 任务
+                      </small>
+                    </button>
+                    <button className="deleteButton" aria-label={`删除 ${document.filename}`} onClick={() => deleteDocument(document)} disabled={busy}>
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <p>还没有导入文件。</p>
+              )}
+            </div>
+
+            <div className="dateBox">
+              <label htmlFor="date">选择日期</label>
+              <div className="dateControls">
+                <button aria-label="前一天" onClick={() => setDate(shiftDate(date, -1))}>
+                  <ChevronLeft size={18} />
                 </button>
-                <button className="deleteButton" aria-label={`删除 ${document.filename}`} onClick={() => deleteDocument(document)} disabled={busy}>
-                  <Trash2 size={15} />
+                <input id="date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+                <button aria-label="后一天" onClick={() => setDate(shiftDate(date, 1))}>
+                  <ChevronRight size={18} />
                 </button>
               </div>
-            ))
-          ) : (
-            <p>还没有导入文件。</p>
-          )}
-        </div>
+            </div>
 
-        <div className="dateBox">
-          <label htmlFor="date">选择日期</label>
-          <div className="dateControls">
-            <button aria-label="前一天" onClick={() => setDate(shiftDate(date, -1))}>
-              <ChevronLeft size={18} />
-            </button>
-            <input id="date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-            <button aria-label="后一天" onClick={() => setDate(shiftDate(date, 1))}>
-              <ChevronRight size={18} />
-            </button>
-          </div>
-        </div>
+            <div className="knownDates">
+              <h2>已导入日期</h2>
+              <button className="dateToggle" onClick={() => setDatesOpen((open) => !open)}>
+                {dates.length ? `${date} · ${dates.length} 天` : "还没有导入日期"}
+              </button>
+              {datesOpen && (
+                <div className="dateList">
+                  {dates.length ? (
+                    dates.map((item) => (
+                      <button key={item} className={item === date ? "current" : ""} onClick={() => setDate(item)}>
+                        {item}
+                      </button>
+                    ))
+                  ) : (
+                    <p>还没有导入 Markdown。</p>
+                  )}
+                </div>
+              )}
+            </div>
 
-        <div className="knownDates">
-          <h2>已导入日期</h2>
-          <div className="dateList">
-            {dates.length ? (
-              dates.map((item) => (
-                <button key={item} className={item === date ? "current" : ""} onClick={() => setDate(item)}>
-                  {item}
+            <div className={`llmStatus ${llm.ok ? "ok" : "fail"}`}>
+              <div>
+                <Bot size={15} />
+                <span>{llm.ok ? "LLM 可用" : "LLM 不可用"}</span>
+              </div>
+              <p>{llm.message}</p>
+              <div className="llmForm">
+                <select
+                  value={llmForm.provider}
+                  onChange={(event) => {
+                    const provider = event.target.value as LlmProvider;
+                    setLlmForm((current) => ({
+                      ...current,
+                      provider,
+                      model: provider === "anthropic" ? "claude-3-5-sonnet-latest" : "gpt-4o-mini"
+                    }));
+                  }}
+                >
+                  <option value="openai">OpenAI 协议</option>
+                  <option value="anthropic">Anthropic 协议</option>
+                </select>
+                <input
+                  type="password"
+                  value={llmForm.apiUrl}
+                  placeholder={llm.settings?.apiUrlMasked || (llmForm.provider === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1")}
+                  onChange={(event) => setLlmForm((current) => ({ ...current, apiUrl: event.target.value }))}
+                />
+                <input
+                  type="password"
+                  value={llmForm.apiKey}
+                  placeholder={llm.settings?.apiKeyMasked || "API Key"}
+                  onChange={(event) => setLlmForm((current) => ({ ...current, apiKey: event.target.value }))}
+                />
+                <input
+                  value={llmForm.model}
+                  placeholder="模型名称"
+                  onChange={(event) => setLlmForm((current) => ({ ...current, model: event.target.value }))}
+                />
+              </div>
+              <button className="iconText" onClick={saveLlmSettings} disabled={busy}>
+                <Save size={15} /> 保存配置
+              </button>
+              <button className="iconText dangerText" onClick={clearLlmSettings} disabled={busy}>
+                <Trash2 size={15} /> 清空配置
+              </button>
+              {!llm.settings?.configured && (
+                <button className="iconText" onClick={checkLlm} disabled={busy}>
+                  <RefreshCw size={15} /> 检查大模型
                 </button>
-              ))
-            ) : (
-              <p>还没有导入 Markdown。</p>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-
-        <div className={`llmStatus ${llm.ok ? "ok" : "fail"}`}>
-          <div>
-            <Bot size={15} />
-            <span>{llm.ok ? "LLM 可用" : "LLM 不可用"}</span>
-          </div>
-          <p>{llm.message}</p>
-          <div className="llmForm">
-            <select
-              value={llmForm.provider}
-              onChange={(event) => {
-                const provider = event.target.value as LlmProvider;
-                setLlmForm((current) => ({
-                  ...current,
-                  provider,
-                  model: provider === "anthropic" ? "claude-3-5-sonnet-latest" : "gpt-4o-mini"
-                }));
-              }}
-            >
-              <option value="openai">OpenAI 协议</option>
-              <option value="anthropic">Anthropic 协议</option>
-            </select>
-            <input
-              type="password"
-              value={llmForm.apiUrl}
-              placeholder={llm.settings?.apiUrlMasked || (llmForm.provider === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1")}
-              onChange={(event) => setLlmForm((current) => ({ ...current, apiUrl: event.target.value }))}
-            />
-            <input
-              type="password"
-              value={llmForm.apiKey}
-              placeholder={llm.settings?.apiKeyMasked || "API Key"}
-              onChange={(event) => setLlmForm((current) => ({ ...current, apiKey: event.target.value }))}
-            />
-            <input
-              value={llmForm.model}
-              placeholder="模型名称"
-              onChange={(event) => setLlmForm((current) => ({ ...current, model: event.target.value }))}
-            />
-          </div>
-          <button className="iconText" onClick={saveLlmSettings} disabled={busy}>
-            <Save size={15} /> 保存配置
-          </button>
-          <button className="iconText dangerText" onClick={clearLlmSettings} disabled={busy}>
-            <Trash2 size={15} /> 清空配置
-          </button>
-          <button className="iconText" onClick={checkLlm} disabled={busy}>
-            <RefreshCw size={15} /> 检查大模型
-          </button>
-        </div>
+        </details>
 
         {config && (
           <div className="systemInfo">
             <p>
-              <Database size={14} /> {config.dataPath}
-            </p>
-            <p>
-              <Bot size={14} /> {config.llmModel}
+              <Bot size={14} /> {llm.model || config.llmModel}
             </p>
           </div>
         )}
@@ -601,6 +668,9 @@ function App() {
             setSummaryDraft={setSummaryDraft}
             saveSummary={saveSummary}
             toggleTask={toggleTask}
+            manualTaskDraft={manualTaskDraft}
+            setManualTaskDraft={setManualTaskDraft}
+            addManualTask={addManualTask}
             busy={busy}
             refresh={() => refreshBase(date)}
           />
@@ -633,10 +703,26 @@ function DayView(props: {
   setSummaryDraft: (value: string) => void;
   saveSummary: () => void;
   toggleTask: (task: Task) => void;
+  manualTaskDraft: string;
+  setManualTaskDraft: (value: string) => void;
+  addManualTask: () => void;
   refresh: () => void;
   busy: boolean;
 }) {
-  const { date, day, completion, summaryDraft, setSummaryDraft, saveSummary, toggleTask, refresh, busy } = props;
+  const {
+    date,
+    day,
+    completion,
+    summaryDraft,
+    setSummaryDraft,
+    saveSummary,
+    toggleTask,
+    manualTaskDraft,
+    setManualTaskDraft,
+    addManualTask,
+    refresh,
+    busy
+  } = props;
 
   return (
     <div className="singleColumn">
@@ -656,6 +742,20 @@ function DayView(props: {
         </div>
         <p className="muted">当天完成度 {completion}%</p>
 
+        <div className="manualTaskBox">
+          <input
+            value={manualTaskDraft}
+            onChange={(event) => setManualTaskDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") addManualTask();
+            }}
+            placeholder="手动添加一条清单任务..."
+          />
+          <button className="primary" disabled={busy || !manualTaskDraft.trim()} onClick={addManualTask}>
+            添加
+          </button>
+        </div>
+
         <div className="taskList">
           {(day?.tasks || []).length ? (
             day?.tasks.map((task) => (
@@ -663,9 +763,6 @@ function DayView(props: {
                 {task.completed ? <CheckCircle2 className="done" size={20} /> : <Circle className="todo" size={20} />}
                 <div>
                   <p>{task.text}</p>
-                  <span>
-                    {task.file}:{task.line}
-                  </span>
                 </div>
               </button>
             ))

@@ -133,7 +133,7 @@ function splitMarkdownByDate(filename, raw) {
   const startDate = frontmatterDate || dateFromFilename(filename) || format(new Date(), "yyyy-MM-dd");
 
   lines.forEach((line, index) => {
-    const match = line.match(/^\s{0,3}###\s+(.+?)\s*$/);
+    const match = line.match(/^\s{0,3}###\s+(Day\b.*)$/i);
     if (match) {
       const dateInTitle = validateDate(match[1].match(/(\d{4}-\d{2}-\d{2})/)?.[1]);
       dayHeadingIndexes.push({
@@ -151,7 +151,8 @@ function splitMarkdownByDate(filename, raw) {
       return {
         date,
         title: item.title || `${filename} ${date}`,
-        content: lines.slice(item.index, next).join("\n").trim()
+        content: lines.slice(item.index, next).join("\n").trim(),
+        taskEnabled: true
       };
     });
   }
@@ -161,7 +162,8 @@ function splitMarkdownByDate(filename, raw) {
     {
       date: fallbackDate,
       title: parsed.data.title || path.basename(filename, ".md"),
-      content: parsed.content.trim()
+      content: parsed.content.trim(),
+      taskEnabled: false
     }
   ];
 }
@@ -203,12 +205,45 @@ function importMarkdown(filename, content) {
     const documentId = Number(insertDocument.run(filename, content, hash).lastInsertRowid);
     const days = splitMarkdownByDate(filename, content).map((day) => {
       const dayNoteId = Number(insertDay.run(documentId, day.date, day.title, day.content).lastInsertRowid);
-      const tasks = parseTasks(day.content, documentId, dayNoteId, day.date);
+      const tasks = day.taskEnabled ? parseTasks(day.content, documentId, dayNoteId, day.date) : [];
       tasks.forEach((task) => insertTask.run(task));
       return { ...day, id: dayNoteId, taskCount: tasks.length };
     });
     return { documentId, duplicate: false, days };
   })();
+}
+
+function getManualDocumentId() {
+  const filename = "__manual_tasks__.md";
+  const existing = db.prepare("select id from imported_documents where filename = ?").get(filename);
+  if (existing) return existing.id;
+  return Number(
+    db.prepare("insert into imported_documents (filename, content, content_hash) values (?, ?, ?)")
+      .run(filename, "Manual tasks created in Taw Knows.", "__manual_tasks__")
+      .lastInsertRowid
+  );
+}
+
+function getManualDayNoteId(documentId, date) {
+  const existing = db.prepare("select id from day_notes where document_id = ? and date = ?").get(documentId, date);
+  if (existing) return existing.id;
+  return Number(
+    db.prepare("insert into day_notes (document_id, date, title, content) values (?, ?, ?, ?)")
+      .run(documentId, date, `手动任务 ${date}`, `### Day ${date}\n`)
+      .lastInsertRowid
+  );
+}
+
+function createManualTask(date, text) {
+  const documentId = getManualDocumentId();
+  const dayNoteId = getManualDayNoteId(documentId, date);
+  const line = Number(db.prepare("select count(*) as count from tasks where day_note_id = ?").get(dayNoteId).count) + 1;
+  const id = hashText(`manual:${documentId}:${dayNoteId}:${date}:${Date.now()}:${text}`);
+  db.prepare(
+    `insert into tasks (id, document_id, day_note_id, date, line, text, completed)
+     values (?, ?, ?, ?, ?, ?, 0)`
+  ).run(id, documentId, dayNoteId, date, line, text);
+  return taskRows("where tasks.id = ?", [id])[0];
 }
 
 function taskRows(where = "", params = []) {
@@ -446,6 +481,7 @@ app.get("/api/documents", (_req, res) => {
       from imported_documents
       left join day_notes on day_notes.document_id = imported_documents.id
       left join tasks on tasks.document_id = imported_documents.id
+      where imported_documents.filename != '__manual_tasks__.md'
       group by imported_documents.id
       order by imported_documents.imported_at desc, imported_documents.id desc`
     )
@@ -522,6 +558,15 @@ app.patch("/api/tasks/:id", (req, res) => {
   if (!info.changes) return res.status(404).json({ error: "Task not found" });
   const task = taskRows("where tasks.id = ?", [id])[0];
   res.json({ task });
+});
+
+app.post("/api/tasks", (req, res) => {
+  const date = validateDate(String(req.body.date || ""));
+  const text = String(req.body.text || "").trim();
+  if (!date) return res.status(400).json({ error: "Invalid date" });
+  if (!text) return res.status(400).json({ error: "Task text is required" });
+  const task = createManualTask(date, text);
+  res.status(201).json({ task });
 });
 
 app.post("/api/summaries", (req, res) => {

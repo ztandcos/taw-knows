@@ -7,6 +7,15 @@
   --color-text: #57615a;
   --color-text-dark: #151613;
   --color-text-light: #868f88;
+  --color-muted-surface: #ebe9df;
+  --color-input: #fffdf8;
+  --color-danger: #9a4b42;
+  --color-warning: #9a7b2f;
+  --color-success-soft: #eef4ef;
+  --color-error-bg: #fff1ef;
+  --color-error-text: #a23d2f;
+  --color-error-border: #f1c5bd;
+  --shadow-panel: 0 12px 30px rgba(21, 22, 19, 0.06);
   font-family:
     "LXGW WenKai", "STKaiti", "KaiTi", "Kaiti SC", "Songti SC", serif;
   color: var(--color-text-dark);
@@ -15,12 +24,33 @@
   text-rendering: optimizeLegibility;
 }
 
+html[data-theme="dark"] {
+  --color-primary: #69cbbb;
+  --color-body: #111512;
+  --color-light: #181f1b;
+  --color-panel: #202820;
+  --color-border: #334039;
+  --color-text: #c5d0c8;
+  --color-text-dark: #f1f1ec;
+  --color-text-light: #89968f;
+  --color-muted-surface: #28322d;
+  --color-input: #151b17;
+  --color-danger: #e19a8f;
+  --color-warning: #d7bd73;
+  --color-success-soft: #1c2d27;
+  --color-error-bg: #351d1d;
+  --color-error-text: #ffc4bc;
+  --color-error-border: #70413b;
+  --shadow-panel: 0 18px 38px rgba(0, 0, 0, 0.28);
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
+  background: var(--color-body);
 }
 
 button,
@@ -77,7 +107,7 @@ button {
   grid-template-columns: 1fr 1fr;
   gap: 6px;
   padding: 5px;
-  background: #ebe9df;
+  background: var(--color-muted-surface);
   border-radius: 8px;
 }
 
@@ -154,6 +184,17 @@ button {
   border: 1px solid var(--color-border);
 }
 
+.dateToggle {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-panel);
+  color: var(--color-text-dark);
+  text-align: left;
+}
+
 .documentList {
   display: grid;
   gap: 8px;
@@ -213,7 +254,7 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #9a4b42;
+  color: var(--color-danger);
 }
 
 .systemInfo {
@@ -268,6 +309,68 @@ button {
   display: none;
 }
 
+.functionMenu {
+  position: sticky;
+  top: 12px;
+  z-index: 20;
+}
+
+.functionMenu summary {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-panel);
+  color: var(--color-text-dark);
+  cursor: pointer;
+  list-style: none;
+}
+
+.functionMenu summary::-webkit-details-marker {
+  display: none;
+}
+
+.menuBody {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-light);
+  box-shadow: var(--shadow-panel);
+}
+
+.themeSwitch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 5px;
+  border-radius: 8px;
+  background: var(--color-muted-surface);
+}
+
+.themeSwitch button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-text);
+}
+
+.themeSwitch button.active {
+  background: var(--color-primary);
+  color: var(--color-body);
+}
+
 .llmStatus {
   display: grid;
   gap: 8px;
@@ -301,7 +404,7 @@ button {
   min-height: 36px;
   border: 1px solid var(--color-border);
   border-radius: 7px;
-  background: #fffdf8;
+  background: var(--color-input);
   color: var(--color-text-dark);
   padding: 0 10px;
 }
@@ -338,7 +441,7 @@ button {
   border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 22px;
-  box-shadow: 0 12px 30px rgba(21, 22, 19, 0.06);
+  box-shadow: var(--shadow-panel);
 }
 
 .panelHeader {
@@ -371,12 +474,12 @@ h3 {
 
 .iconText {
   padding: 0 12px;
-  background: #ebe9df;
+  background: var(--color-muted-surface);
   color: var(--color-text-dark);
 }
 
 .dangerText {
-  color: #9a4b42;
+  color: var(--color-danger);
 }
 
 .primary {
@@ -395,7 +498,7 @@ textarea:disabled {
 
 .progressLine {
   height: 9px;
-  background: #e7e4d9;
+  background: var(--color-muted-surface);
   border-radius: 999px;
   overflow: hidden;
 }
@@ -412,6 +515,22 @@ textarea:disabled {
   display: grid;
   gap: 10px;
   margin-top: 18px;
+}
+
+.manualTaskBox {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.manualTaskBox input {
+  min-height: 42px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-input);
+  color: var(--color-text-dark);
+  padding: 0 12px;
 }
 
 .taskRow {
@@ -449,7 +568,7 @@ textarea:disabled {
 }
 
 .todo {
-  color: #9a7b2f;
+  color: var(--color-warning);
 }
 
 .emptyState {
@@ -557,7 +676,7 @@ textarea {
   border-radius: 8px;
   padding: 12px;
   margin: 16px 0 12px;
-  background: #fffdf8;
+  background: var(--color-input);
   color: var(--color-text-dark);
 }
 
@@ -596,7 +715,7 @@ textarea {
 }
 
 .message.user {
-  background: #eef4ef;
+  background: var(--color-success-soft);
 }
 
 .chatInput {
@@ -621,18 +740,18 @@ textarea {
 .error {
   margin-bottom: 16px;
   padding: 12px 14px;
-  background: #fff1ef;
-  color: #a23d2f;
-  border: 1px solid #f1c5bd;
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+  border: 1px solid var(--color-error-border);
   border-radius: 8px;
 }
 
 .notice {
   margin-bottom: 16px;
   padding: 12px 14px;
-  background: #eef4ef;
+  background: var(--color-success-soft);
   color: var(--color-primary);
-  border: 1px solid #c9dfd8;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 

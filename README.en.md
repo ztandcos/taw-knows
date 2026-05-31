@@ -42,13 +42,13 @@ The recommended flow is uploading `.md` files from the page. Uploaded content is
 Recommended Markdown structure:
 
 ```md
-### 2026-06-01
+### Day 2026-06-01
 
 #### Read papers
 #### Organize experiment notes
 #### Draft the daily summary
 
-### 2026-06-02
+### Day 2026-06-02
 
 #### Review yesterday's blockers
 #### Continue implementation
@@ -56,11 +56,14 @@ Recommended Markdown structure:
 
 Import rules:
 
-- Each level-3 heading, `###`, is treated as one day.
-- Child heading lines, `####`, `#####`, and `######`, become tasks.
+- Only level-3 headings starting with `### Day` are treated as days.
+- Child heading lines under `### Day`, `####`, `#####`, and `######`, become tasks.
+- Ordinary level-3 headings do not create tasks.
 - Markdown checkbox tasks, `- [ ]` and `- [x]`, are still supported.
-- If a `###` heading includes `YYYY-MM-DD`, that date is used.
-- If a `###` heading has no date, dates are assigned from the upload day onward in heading order.
+- If a `### Day` heading includes `YYYY-MM-DD`, that date is used.
+- If a `### Day` heading has no date, dates are assigned from the upload day onward in heading order.
+- The page supports manually added checklist tasks. Manual and imported tasks share completion state, progress, and summary corpus.
+- A sticky function menu contains upload, document management, date selection, model settings, and light/dark theme controls.
 
 If there are no level-3 headings, the app falls back to frontmatter:
 
