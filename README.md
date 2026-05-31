@@ -9,10 +9,12 @@ Taw Knows 是一个轻量化本地网页应用，用来把 Markdown 任务记录
 - 从本地 Markdown 目录读取笔记。
 - 解析 Markdown checkbox 任务，例如 `- [ ] task` 和 `- [x] done`。
 - 通过日期选择器查看当天任务。
+- 在页面上传 `.md` 文件，后端会按日期切分并写入 SQLite。
+- 点击任务即可更新完成状态，重启后仍会保留。
 - 将每日小结保存到本地 SQLite 数据库。
-- 提供独立的周总结页面。
-- 支持基于本周语料的小结对话。
-- 未配置 LLM API key 时，会自动使用本地规则生成总结。
+- 提供独立的周总结和月总结页面，二者使用各自范围内的语料。
+- 支持基于本周或本月语料的小结对话。
+- 页面提供“大模型检查”按钮；检查失败时会禁用 AI 总结和对话。
 
 ## 启动
 
@@ -33,19 +35,9 @@ API 服务运行在：
 http://127.0.0.1:4317/
 ```
 
-## Markdown 目录
+## Markdown 导入
 
-默认读取：
-
-```txt
-notes/
-```
-
-也可以指定自己的笔记目录：
-
-```bash
-NOTES_DIR=/path/to/your/notes npm run dev:server
-```
+现在推荐直接在页面上传 `.md` 文件。上传后，内容会被保存到 SQLite，不依赖原文件是否还在本地。
 
 日期优先从 frontmatter 中读取：
 
@@ -68,18 +60,21 @@ data/app.db
 
 数据库文件不会提交到 Git。
 
-## 可选 LLM
+## API 配置
 
-设置 `OPENAI_API_KEY` 后，可以启用 LLM 版本的周总结和对话：
+复制配置模板：
 
 ```bash
-OPENAI_API_KEY=your_key npm run dev
+cp .env.example .env
 ```
 
-也可以指定模型：
+`.env` 示例：
 
-```bash
+```env
+PORT=4317
+DATA_DIR=./data
+OPENAI_API_KEY=your_key
 OPENAI_MODEL=gpt-4o-mini
 ```
 
-如果没有配置 API key，Taw Knows 仍然可以使用本地规则总结。
+如果启动前没有配置 `OPENAI_API_KEY`，页面里的 AI 总结和 AI 对话会保持禁用。配置完成后重新启动服务，再点击“检查大模型”确认可用。

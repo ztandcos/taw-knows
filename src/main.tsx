@@ -8,7 +8,7 @@ import {
   ChevronRight,
   Circle,
   Database,
-  FileText,
+  FileUp,
   MessageSquareText,
   RefreshCw,
   Save,
@@ -16,6 +16,9 @@ import {
   Sparkles
 } from "lucide-react";
 import "./styles.css";
+
+type View = "day" | "week" | "month";
+type Scope = "week" | "month";
 
 type Task = {
   id: string;
@@ -27,11 +30,11 @@ type Task = {
 };
 
 type Note = {
+  id: number;
   date: string;
   file: string;
   title: string;
   html: string;
-  tasks: Task[];
 };
 
 type Summary = {
@@ -48,6 +51,12 @@ type ChatMessage = {
   createdAt: string;
 };
 
+type Config = {
+  dataPath: string;
+  llmConfigured: boolean;
+  llmModel: string;
+};
+
 type DayPayload = {
   date: string;
   notes: Note[];
@@ -55,10 +64,16 @@ type DayPayload = {
   summaries: Summary[];
 };
 
-type Config = {
-  notesDir: string;
-  dataPath: string;
-  llmEnabled: boolean;
+type Progress = {
+  total: number;
+  completed: number;
+  percent: number;
+};
+
+type LlmStatus = {
+  ok: boolean;
+  message: string;
+  model: string;
 };
 
 const today = new Date().toISOString().slice(0, 10);
@@ -81,55 +96,121 @@ function shiftDate(date: string, days: number) {
   return next.toISOString().slice(0, 10);
 }
 
+function scopeFromView(view: View): Scope {
+  return view === "month" ? "month" : "week";
+}
+
 function App() {
-  const [view, setView] = useState<"day" | "week">("day");
+  const [view, setView] = useState<View>("day");
   const [date, setDate] = useState(today);
   const [dates, setDates] = useState<string[]>([]);
   const [config, setConfig] = useState<Config | null>(null);
+  const [progress, setProgress] = useState<Progress>({ total: 0, completed: 0, percent: 0 });
+  const [llm, setLlm] = useState<LlmStatus>({ ok: false, message: "尚未检查", model: "gpt-4o-mini" });
   const [day, setDay] = useState<DayPayload | null>(null);
   const [summaryDraft, setSummaryDraft] = useState("");
-  const [weeklySummary, setWeeklySummary] = useState("");
+  const [rangeSummary, setRangeSummary] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatDraft, setChatDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
-  const completion = useMemo(() => {
+  const dayCompletion = useMemo(() => {
     const tasks = day?.tasks || [];
     if (!tasks.length) return 0;
     return Math.round((tasks.filter((task) => task.completed).length / tasks.length) * 100);
   }, [day]);
 
-  async function refreshDay(nextDate = date) {
-    setError("");
-    const [configPayload, datesPayload, dayPayload] = await Promise.all([
+  const aiDisabled = !llm.ok || busy;
+
+  async function refreshBase(nextDate = date) {
+    const [configPayload, datesPayload, progressPayload, dayPayload, llmPayload] = await Promise.all([
       api<Config>("/api/config"),
       api<{ dates: string[] }>("/api/dates"),
-      api<DayPayload>(`/api/day/${nextDate}`)
+      api<Progress>("/api/progress"),
+      api<DayPayload>(`/api/day/${nextDate}`),
+      api<LlmStatus>("/api/llm/status")
     ]);
     setConfig(configPayload);
     setDates(datesPayload.dates);
+    setProgress(progressPayload);
     setDay(dayPayload);
+    setLlm(llmPayload);
   }
 
-  async function refreshWeek(nextDate = date) {
-    setError("");
-    const [weekPayload, messagesPayload] = await Promise.all([
-      api<{ generated: string }>(`/api/week/${nextDate}`),
-      api<{ messages: ChatMessage[] }>(`/api/week/${nextDate}/messages`)
+  async function refreshRange(nextDate = date, nextView = view) {
+    const scope = scopeFromView(nextView);
+    const [summaryPayload, messagesPayload] = await Promise.all([
+      api<{ generated: string }>(`/api/${scope}/${nextDate}`),
+      api<{ messages: ChatMessage[] }>(`/api/${scope}/${nextDate}/messages`)
     ]);
-    setWeeklySummary(weekPayload.generated);
+    setRangeSummary(summaryPayload.generated);
     setMessages(messagesPayload.messages);
   }
 
   useEffect(() => {
-    refreshDay().catch((err) => setError(err.message));
+    refreshBase().catch((err) => setError(err.message));
   }, []);
 
   useEffect(() => {
-    refreshDay(date).catch((err) => setError(err.message));
-    if (view === "week") refreshWeek(date).catch((err) => setError(err.message));
+    setError("");
+    refreshBase(date).catch((err) => setError(err.message));
+    if (view !== "day") refreshRange(date, view).catch((err) => setError(err.message));
   }, [date]);
+
+  async function changeView(nextView: View) {
+    setView(nextView);
+    setError("");
+    if (nextView !== "day") {
+      await refreshRange(date, nextView).catch((err) => setError(err.message));
+    }
+  }
+
+  async function importFile(file: File) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const content = await file.text();
+      const payload = await api<{ duplicate: boolean; days: Array<{ date: string; taskCount: number }> }>("/api/import", {
+        method: "POST",
+        body: JSON.stringify({ filename: file.name, content })
+      });
+      const firstDate = payload.days[0]?.date;
+      if (firstDate) setDate(firstDate);
+      setNotice(payload.duplicate ? "这个 Markdown 文件已经导入过。" : `导入完成：切分 ${payload.days.length} 天。`);
+      await refreshBase(firstDate || date);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "导入失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleTask(task: Task) {
+    setError("");
+    const previous = day;
+    setDay((current) =>
+      current
+        ? {
+            ...current,
+            tasks: current.tasks.map((item) => (item.id === task.id ? { ...item, completed: !item.completed } : item))
+          }
+        : current
+    );
+    try {
+      await api(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ completed: !task.completed })
+      });
+      const progressPayload = await api<Progress>("/api/progress");
+      setProgress(progressPayload);
+    } catch (err) {
+      setDay(previous);
+      setError(err instanceof Error ? err.message : "任务状态保存失败");
+    }
+  }
 
   async function saveSummary() {
     if (!summaryDraft.trim()) return;
@@ -141,7 +222,7 @@ function App() {
         body: JSON.stringify({ date, content: summaryDraft })
       });
       setSummaryDraft("");
-      await refreshDay(date);
+      await refreshBase(date);
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
     } finally {
@@ -149,15 +230,31 @@ function App() {
     }
   }
 
-  async function generateWeek() {
+  async function checkLlm() {
     setBusy(true);
     setError("");
     try {
-      const payload = await api<{ generated: string }>(`/api/week/${date}/summarize`, { method: "POST" });
-      setWeeklySummary(payload.generated);
-      await refreshWeek(date);
+      const payload = await api<LlmStatus>("/api/llm/check", { method: "POST" });
+      setLlm(payload);
+      setNotice(payload.ok ? "大模型检查通过。" : "大模型检查失败，AI 总结和对话已禁用。");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "周总结失败");
+      setLlm((current) => ({ ...current, ok: false, message: err instanceof Error ? err.message : "检查失败" }));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function generateRange() {
+    const scope = scopeFromView(view);
+    setBusy(true);
+    setError("");
+    try {
+      const payload = await api<{ generated: string }>(`/api/${scope}/${date}/summarize`, { method: "POST" });
+      setRangeSummary(payload.generated);
+      await refreshRange(date, view);
+    } catch (err) {
+      setLlm((current) => ({ ...current, ok: false, message: err instanceof Error ? err.message : "AI 调用失败" }));
+      setError(err instanceof Error ? err.message : "总结失败");
     } finally {
       setBusy(false);
     }
@@ -165,19 +262,21 @@ function App() {
 
   async function sendChat() {
     if (!chatDraft.trim()) return;
+    const scope = scopeFromView(view);
     const content = chatDraft;
     setChatDraft("");
     setBusy(true);
     setError("");
     try {
-      const payload = await api<{ messages: ChatMessage[] }>(`/api/week/${date}/chat`, {
+      const payload = await api<{ messages: ChatMessage[] }>(`/api/${scope}/${date}/chat`, {
         method: "POST",
         body: JSON.stringify({ content })
       });
       setMessages(payload.messages);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "发送失败");
       setChatDraft(content);
+      setLlm((current) => ({ ...current, ok: false, message: err instanceof Error ? err.message : "AI 调用失败" }));
+      setError(err instanceof Error ? err.message : "发送失败");
     } finally {
       setBusy(false);
     }
@@ -194,18 +293,34 @@ function App() {
           </div>
         </div>
 
-        <div className="segmented">
-          <button className={view === "day" ? "active" : ""} onClick={() => setView("day")}>
+        <div className="stickyProgress">
+          <div>
+            <span>全部任务进度</span>
+            <strong>{progress.percent}%</strong>
+          </div>
+          <div className="progressLine">
+            <span style={{ width: `${progress.percent}%` }} />
+          </div>
+          <p>
+            {progress.completed}/{progress.total} 已完成
+          </p>
+        </div>
+
+        <label className="uploadBox">
+          <FileUp size={18} />
+          <span>提交 Markdown 文件</span>
+          <input type="file" accept=".md,text/markdown,text/plain" onChange={(event) => event.target.files?.[0] && importFile(event.target.files[0])} />
+        </label>
+
+        <div className="segmented three">
+          <button className={view === "day" ? "active" : ""} onClick={() => changeView("day")}>
             <CalendarDays size={16} /> 当日
           </button>
-          <button
-            className={view === "week" ? "active" : ""}
-            onClick={() => {
-              setView("week");
-              refreshWeek(date).catch((err) => setError(err.message));
-            }}
-          >
-            <Bot size={16} /> 周总结
+          <button className={view === "week" ? "active" : ""} onClick={() => changeView("week")}>
+            <Bot size={16} /> 周
+          </button>
+          <button className={view === "month" ? "active" : ""} onClick={() => changeView("month")}>
+            <Bot size={16} /> 月
           </button>
         </div>
 
@@ -223,7 +338,7 @@ function App() {
         </div>
 
         <div className="knownDates">
-          <h2>已有 Markdown</h2>
+          <h2>已导入日期</h2>
           <div className="dateList">
             {dates.length ? (
               dates.map((item) => (
@@ -232,21 +347,29 @@ function App() {
                 </button>
               ))
             ) : (
-              <p>还没有扫描到日期型 md 文件。</p>
+              <p>还没有导入 Markdown。</p>
             )}
           </div>
+        </div>
+
+        <div className={`llmStatus ${llm.ok ? "ok" : "fail"}`}>
+          <div>
+            <Bot size={15} />
+            <span>{llm.ok ? "LLM 可用" : "LLM 不可用"}</span>
+          </div>
+          <p>{llm.message}</p>
+          <button className="iconText" onClick={checkLlm} disabled={busy}>
+            <RefreshCw size={15} /> 检查大模型
+          </button>
         </div>
 
         {config && (
           <div className="systemInfo">
             <p>
-              <FileText size={14} /> {config.notesDir}
-            </p>
-            <p>
               <Database size={14} /> {config.dataPath}
             </p>
             <p>
-              <Bot size={14} /> {config.llmEnabled ? "LLM 已启用" : "本地总结模式"}
+              <Bot size={14} /> {config.llmModel}
             </p>
           </div>
         )}
@@ -254,27 +377,31 @@ function App() {
 
       <section className="content">
         {error && <div className="error">{error}</div>}
+        {notice && <div className="notice">{notice}</div>}
         {view === "day" ? (
           <DayView
             date={date}
             day={day}
-            completion={completion}
+            completion={dayCompletion}
             summaryDraft={summaryDraft}
             setSummaryDraft={setSummaryDraft}
             saveSummary={saveSummary}
+            toggleTask={toggleTask}
             busy={busy}
-            refresh={() => refreshDay(date)}
+            refresh={() => refreshBase(date)}
           />
         ) : (
-          <WeekView
+          <RangeView
+            scope={scopeFromView(view)}
             date={date}
-            weeklySummary={weeklySummary}
+            summary={rangeSummary}
             messages={messages}
             chatDraft={chatDraft}
             setChatDraft={setChatDraft}
-            generateWeek={generateWeek}
+            generateRange={generateRange}
             sendChat={sendChat}
             busy={busy}
+            aiDisabled={aiDisabled}
           />
         )}
       </section>
@@ -289,13 +416,14 @@ function DayView(props: {
   summaryDraft: string;
   setSummaryDraft: (value: string) => void;
   saveSummary: () => void;
+  toggleTask: (task: Task) => void;
   refresh: () => void;
   busy: boolean;
 }) {
-  const { date, day, completion, summaryDraft, setSummaryDraft, saveSummary, refresh, busy } = props;
+  const { date, day, completion, summaryDraft, setSummaryDraft, saveSummary, toggleTask, refresh, busy } = props;
 
   return (
-    <div className="pageGrid">
+    <div className="singleColumn">
       <section className="mainPanel">
         <div className="panelHeader">
           <div>
@@ -310,12 +438,12 @@ function DayView(props: {
         <div className="progressLine">
           <span style={{ width: `${completion}%` }} />
         </div>
-        <p className="muted">完成度 {completion}%</p>
+        <p className="muted">当天完成度 {completion}%</p>
 
         <div className="taskList">
           {(day?.tasks || []).length ? (
             day?.tasks.map((task) => (
-              <article key={task.id} className="taskRow">
+              <button key={task.id} className="taskRow taskButton" onClick={() => toggleTask(task)}>
                 {task.completed ? <CheckCircle2 className="done" size={20} /> : <Circle className="todo" size={20} />}
                 <div>
                   <p>{task.text}</p>
@@ -323,7 +451,7 @@ function DayView(props: {
                     {task.file}:{task.line}
                   </span>
                 </div>
-              </article>
+              </button>
             ))
           ) : (
             <div className="emptyState">这一天没有解析到 Markdown checkbox 任务。</div>
@@ -333,7 +461,7 @@ function DayView(props: {
         <div className="notesPreview">
           <h3>Markdown 预览</h3>
           {(day?.notes || []).map((note) => (
-            <article key={note.file} className="noteBlock">
+            <article key={note.id} className="noteBlock">
               <header>
                 <strong>{note.title}</strong>
                 <span>{note.file}</span>
@@ -342,62 +470,67 @@ function DayView(props: {
             </article>
           ))}
         </div>
-      </section>
 
-      <aside className="summaryPanel">
-        <h3>当天小结</h3>
-        <textarea
-          value={summaryDraft}
-          onChange={(event) => setSummaryDraft(event.target.value)}
-          placeholder="记录今天推进了什么、卡住了什么、明天要保留的判断..."
-        />
-        <button className="primary" disabled={busy || !summaryDraft.trim()} onClick={saveSummary}>
-          <Save size={16} /> 保存小结
-        </button>
+        <div className="dailySummaryBottom">
+          <h3>当天总结</h3>
+          <textarea
+            value={summaryDraft}
+            onChange={(event) => setSummaryDraft(event.target.value)}
+            placeholder="记录今天推进了什么、卡住了什么、明天要保留的判断..."
+          />
+          <button className="primary" disabled={busy || !summaryDraft.trim()} onClick={saveSummary}>
+            <Save size={16} /> 保存总结
+          </button>
 
-        <div className="summaryHistory">
-          {(day?.summaries || []).map((summary) => (
-            <article key={summary.id}>
-              <time>{summary.createdAt}</time>
-              <p>{summary.content}</p>
-            </article>
-          ))}
+          <div className="summaryHistory">
+            {(day?.summaries || []).map((summary) => (
+              <article key={summary.id}>
+                <time>{summary.createdAt}</time>
+                <p>{summary.content}</p>
+              </article>
+            ))}
+          </div>
         </div>
-      </aside>
+      </section>
     </div>
   );
 }
 
-function WeekView(props: {
+function RangeView(props: {
+  scope: Scope;
   date: string;
-  weeklySummary: string;
+  summary: string;
   messages: ChatMessage[];
   chatDraft: string;
   setChatDraft: (value: string) => void;
-  generateWeek: () => void;
+  generateRange: () => void;
   sendChat: () => void;
   busy: boolean;
+  aiDisabled: boolean;
 }) {
-  const { date, weeklySummary, messages, chatDraft, setChatDraft, generateWeek, sendChat, busy } = props;
+  const { scope, date, summary, messages, chatDraft, setChatDraft, generateRange, sendChat, busy, aiDisabled } = props;
+  const label = scope === "month" ? "月总结" : "周总结";
   return (
     <div className="weekGrid">
       <section className="mainPanel">
         <div className="panelHeader">
           <div>
-            <p className="eyebrow">Weekly synthesis</p>
-            <h2>{date} 所在周</h2>
+            <p className="eyebrow">{scope === "month" ? "Monthly synthesis" : "Weekly synthesis"}</p>
+            <h2>
+              {date} 所在{scope === "month" ? "月" : "周"}
+            </h2>
           </div>
-          <button className="primary" onClick={generateWeek} disabled={busy}>
-            <Sparkles size={16} /> 生成总结
+          <button className="primary" onClick={generateRange} disabled={aiDisabled}>
+            <Sparkles size={16} /> 生成{label}
           </button>
         </div>
-        <pre className="weeklyText">{weeklySummary || "点击生成总结，或先保存一些当天小结。"}</pre>
+        <pre className="weeklyText">{summary || `切到${label}后会显示当前范围的本地语料概览。`}</pre>
       </section>
 
       <aside className="chatPanel">
         <div className="chatTitle">
           <MessageSquareText size={18} />
-          <h3>本周语料对话</h3>
+          <h3>{scope === "month" ? "本月语料对话" : "本周语料对话"}</h3>
         </div>
         <div className="messages">
           {messages.length ? (
@@ -415,9 +548,10 @@ function WeekView(props: {
           <textarea
             value={chatDraft}
             onChange={(event) => setChatDraft(event.target.value)}
-            placeholder="围绕这一周的任务和小结提问..."
+            placeholder={scope === "month" ? "围绕这个月的任务和小结提问..." : "围绕这一周的任务和小结提问..."}
+            disabled={aiDisabled}
           />
-          <button aria-label="发送" onClick={sendChat} disabled={busy || !chatDraft.trim()}>
+          <button aria-label="发送" onClick={sendChat} disabled={aiDisabled || !chatDraft.trim() || busy}>
             <Send size={18} />
           </button>
         </div>

@@ -9,10 +9,12 @@ Taw Knows is a lightweight local web app for turning Markdown task notes into a 
 - Reads Markdown files from a local notes directory.
 - Parses Markdown checkbox tasks, such as `- [ ] task` and `- [x] done`.
 - Lets you review tasks by date.
+- Lets you upload `.md` files from the page; the server splits them by date and stores them in SQLite.
+- Persists task completion state across restarts.
 - Saves daily summaries into a local SQLite database.
-- Provides a weekly summary page.
-- Includes a weekly corpus chat view.
-- Falls back to local rule-based summaries when no LLM API key is configured.
+- Provides separate weekly and monthly summary pages with isolated corpora.
+- Includes weekly and monthly corpus chat views.
+- Includes an LLM check button; failed checks disable AI summary and chat actions.
 
 ## Getting Started
 
@@ -33,19 +35,9 @@ The API server runs on:
 http://127.0.0.1:4317/
 ```
 
-## Notes Directory
+## Markdown Import
 
-By default, the app reads Markdown files from:
-
-```txt
-notes/
-```
-
-You can point it at another folder:
-
-```bash
-NOTES_DIR=/path/to/your/notes npm run dev:server
-```
+The recommended flow is uploading `.md` files from the page. Uploaded content is stored in SQLite, so the original file does not need to stay in place.
 
 Dates are detected from frontmatter first:
 
@@ -68,18 +60,21 @@ data/app.db
 
 The database file is ignored by Git.
 
-## Optional LLM
+## API Configuration
 
-Set `OPENAI_API_KEY` to enable LLM-backed weekly summaries and chat responses:
+Copy the configuration template:
 
 ```bash
-OPENAI_API_KEY=your_key npm run dev
+cp .env.example .env
 ```
 
-You can also set:
+Example `.env`:
 
-```bash
+```env
+PORT=4317
+DATA_DIR=./data
+OPENAI_API_KEY=your_key
 OPENAI_MODEL=gpt-4o-mini
 ```
 
-Without an API key, Taw Knows still works with local rule-based summaries.
+If `OPENAI_API_KEY` is not configured before startup, AI summaries and AI chat stay disabled. Configure the key, restart the server, then use the in-page LLM check button.

@@ -80,6 +80,10 @@ button {
   border-radius: 8px;
 }
 
+.segmented.three {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
 .segmented button,
 .dateControls button,
 .dateList button,
@@ -157,9 +161,82 @@ button {
   overflow-wrap: anywhere;
 }
 
+.stickyProgress {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.stickyProgress div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--color-text-dark);
+}
+
+.stickyProgress p {
+  margin: 0;
+  color: var(--color-text-light);
+  font-size: 13px;
+}
+
+.uploadBox {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  background: var(--color-primary);
+  color: #ffffff;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.uploadBox input {
+  display: none;
+}
+
+.llmStatus {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+}
+
+.llmStatus > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.llmStatus p {
+  margin: 0;
+  color: var(--color-text-light);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.llmStatus.ok > div {
+  color: var(--color-primary);
+}
+
+.llmStatus.fail > div {
+  color: #9a7b2f;
+}
+
 .content {
   padding: 28px;
   min-width: 0;
+}
+
+.singleColumn {
+  max-width: 1040px;
 }
 
 .pageGrid,
@@ -221,7 +298,9 @@ h3 {
 }
 
 .primary:disabled,
-.chatInput button:disabled {
+.chatInput button:disabled,
+.iconText:disabled,
+textarea:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -257,6 +336,12 @@ h3 {
   border-radius: 8px;
 }
 
+.taskButton {
+  width: 100%;
+  text-align: left;
+  color: inherit;
+}
+
 .taskRow p,
 .taskRow span,
 .summaryHistory p,
@@ -288,6 +373,12 @@ h3 {
 
 .notesPreview {
   margin-top: 28px;
+}
+
+.dailySummaryBottom {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border);
 }
 
 .noteBlock {
@@ -397,6 +488,15 @@ textarea {
   background: #fff1ef;
   color: #a23d2f;
   border: 1px solid #f1c5bd;
+  border-radius: 8px;
+}
+
+.notice {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: #eef4ef;
+  color: var(--color-primary);
+  border: 1px solid #c9dfd8;
   border-radius: 8px;
 }
 
