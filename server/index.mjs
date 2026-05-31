@@ -594,9 +594,25 @@ app.delete("/api/documents/:id", (req, res) => {
   const existing = db.prepare("select id from imported_documents where id = ?").get(id);
   if (!existing) return res.status(404).json({ error: "Document not found" });
   db.transaction(() => {
+    const dates = db.prepare("select distinct date from day_notes where document_id = ?").all(id).map((row) => row.date);
     db.prepare("delete from tasks where document_id = ?").run(id);
     db.prepare("delete from day_notes where document_id = ?").run(id);
     db.prepare("delete from imported_documents where id = ?").run(id);
+    for (const date of dates) {
+      const hasOtherNotes = db.prepare("select 1 from day_notes where date = ? limit 1").get(date);
+      if (!hasOtherNotes) {
+        db.prepare("delete from daily_summaries where date = ?").run(date);
+      }
+    }
+    const scopeStarts = db.prepare(
+      "select distinct scope_type, scope_start from chat_messages where scope_start in (select distinct date from day_notes)"
+    ).all();
+    for (const { scope_type, scope_start } of scopeStarts) {
+      const corpus = buildCorpus(scope_type, scope_start);
+      if (!corpus.tasks.length && !corpus.summaries.length) {
+        db.prepare("delete from chat_messages where scope_type = ? and scope_start = ?").run(scope_type, scope_start);
+      }
+    }
   })();
   res.json({ ok: true });
 });
