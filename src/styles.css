@@ -84,6 +84,10 @@ button {
   grid-template-columns: 1fr 1fr 1fr;
 }
 
+.segmented.four {
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+}
+
 .segmented button,
 .dateControls button,
 .dateList button,
@@ -110,7 +114,8 @@ button {
 }
 
 .dateBox label,
-.knownDates h2 {
+.knownDates h2,
+.documentList h2 {
   display: block;
   margin-bottom: 8px;
   font-size: 13px;
@@ -146,6 +151,68 @@ button {
   background: var(--color-panel);
   color: var(--color-text);
   border: 1px solid var(--color-border);
+}
+
+.documentList {
+  display: grid;
+  gap: 8px;
+}
+
+.documentList p {
+  margin: 0;
+  color: var(--color-text-light);
+  font-size: 13px;
+}
+
+.documentRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.documentOpen,
+.deleteButton {
+  min-height: 42px;
+  border-radius: 7px;
+  border: 1px solid var(--color-border);
+  background: var(--color-panel);
+  color: var(--color-text-dark);
+}
+
+.documentOpen {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.documentOpen span,
+.documentOpen small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.documentOpen span {
+  color: var(--color-text-dark);
+}
+
+.documentOpen small {
+  color: var(--color-text-light);
+}
+
+.documentRow.current .documentOpen {
+  border-color: var(--color-primary);
+}
+
+.deleteButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #9a4b42;
 }
 
 .systemInfo {
@@ -373,6 +440,54 @@ textarea:disabled {
 
 .notesPreview {
   margin-top: 28px;
+}
+
+.previewStack {
+  display: grid;
+  gap: 18px;
+}
+
+.previewDay {
+  padding: 18px;
+  background: var(--color-light);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.previewDay header {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: baseline;
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.previewDay header span {
+  color: var(--color-primary);
+  font-size: 13px;
+}
+
+.readableMarkdown {
+  color: var(--color-text-dark);
+}
+
+.readableMarkdown h3 {
+  font-size: 22px;
+  margin: 0 0 14px;
+}
+
+.readableMarkdown h4,
+.readableMarkdown h5,
+.readableMarkdown h6 {
+  margin: 14px 0 8px;
+  font-size: 18px;
+}
+
+.readableMarkdown p,
+.readableMarkdown li {
+  color: var(--color-text);
 }
 
 .dailySummaryBottom {

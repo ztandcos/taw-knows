@@ -8,16 +8,18 @@ import {
   ChevronRight,
   Circle,
   Database,
+  FileText,
   FileUp,
   MessageSquareText,
   RefreshCw,
   Save,
   Send,
-  Sparkles
+  Sparkles,
+  Trash2
 } from "lucide-react";
 import "./styles.css";
 
-type View = "day" | "week" | "month";
+type View = "day" | "preview" | "week" | "month";
 type Scope = "week" | "month";
 
 type Task = {
@@ -76,6 +78,29 @@ type LlmStatus = {
   model: string;
 };
 
+type DocumentSummary = {
+  id: number;
+  filename: string;
+  importedAt: string;
+  dayCount: number;
+  taskCount: number;
+};
+
+type DocumentPreview = {
+  document: {
+    id: number;
+    filename: string;
+    importedAt: string;
+    html: string;
+  };
+  days: Array<{
+    id: number;
+    date: string;
+    title: string;
+    html: string;
+  }>;
+};
+
 const today = new Date().toISOString().slice(0, 10);
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
@@ -100,6 +125,17 @@ function scopeFromView(view: View): Scope {
   return view === "month" ? "month" : "week";
 }
 
+function rangeTitle(scope: Scope, date: string) {
+  const current = new Date(`${date}T00:00:00`);
+  const month = current.getMonth() + 1;
+  if (scope === "month") return `${month}月`;
+
+  const firstDay = new Date(current.getFullYear(), current.getMonth(), 1);
+  const mondayBasedOffset = (firstDay.getDay() + 6) % 7;
+  const weekOfMonth = Math.ceil((current.getDate() + mondayBasedOffset) / 7);
+  return `${month}月第${weekOfMonth}周`;
+}
+
 function App() {
   const [view, setView] = useState<View>("day");
   const [date, setDate] = useState(today);
@@ -107,6 +143,9 @@ function App() {
   const [config, setConfig] = useState<Config | null>(null);
   const [progress, setProgress] = useState<Progress>({ total: 0, completed: 0, percent: 0 });
   const [llm, setLlm] = useState<LlmStatus>({ ok: false, message: "尚未检查", model: "gpt-4o-mini" });
+  const [documents, setDocuments] = useState<DocumentSummary[]>([]);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
+  const [preview, setPreview] = useState<DocumentPreview | null>(null);
   const [day, setDay] = useState<DayPayload | null>(null);
   const [summaryDraft, setSummaryDraft] = useState("");
   const [rangeSummary, setRangeSummary] = useState("");
@@ -125,16 +164,21 @@ function App() {
   const aiDisabled = !llm.ok || busy;
 
   async function refreshBase(nextDate = date) {
-    const [configPayload, datesPayload, progressPayload, dayPayload, llmPayload] = await Promise.all([
+    const [configPayload, datesPayload, progressPayload, documentsPayload, dayPayload, llmPayload] = await Promise.all([
       api<Config>("/api/config"),
       api<{ dates: string[] }>("/api/dates"),
       api<Progress>("/api/progress"),
+      api<{ documents: DocumentSummary[] }>("/api/documents"),
       api<DayPayload>(`/api/day/${nextDate}`),
       api<LlmStatus>("/api/llm/status")
     ]);
     setConfig(configPayload);
     setDates(datesPayload.dates);
     setProgress(progressPayload);
+    setDocuments(documentsPayload.documents);
+    if (!selectedDocumentId && documentsPayload.documents[0]) {
+      setSelectedDocumentId(documentsPayload.documents[0].id);
+    }
     setDay(dayPayload);
     setLlm(llmPayload);
   }
@@ -149,6 +193,16 @@ function App() {
     setMessages(messagesPayload.messages);
   }
 
+  async function refreshPreview(documentId = selectedDocumentId) {
+    if (!documentId) {
+      setPreview(null);
+      return;
+    }
+    const payload = await api<DocumentPreview>(`/api/documents/${documentId}/preview`);
+    setPreview(payload);
+    setSelectedDocumentId(documentId);
+  }
+
   useEffect(() => {
     refreshBase().catch((err) => setError(err.message));
   }, []);
@@ -156,14 +210,16 @@ function App() {
   useEffect(() => {
     setError("");
     refreshBase(date).catch((err) => setError(err.message));
-    if (view !== "day") refreshRange(date, view).catch((err) => setError(err.message));
+    if (view === "week" || view === "month") refreshRange(date, view).catch((err) => setError(err.message));
   }, [date]);
 
   async function changeView(nextView: View) {
     setView(nextView);
     setError("");
-    if (nextView !== "day") {
+    if (nextView === "week" || nextView === "month") {
       await refreshRange(date, nextView).catch((err) => setError(err.message));
+    } else if (nextView === "preview") {
+      await refreshPreview().catch((err) => setError(err.message));
     }
   }
 
@@ -173,16 +229,40 @@ function App() {
     setNotice("");
     try {
       const content = await file.text();
-      const payload = await api<{ duplicate: boolean; days: Array<{ date: string; taskCount: number }> }>("/api/import", {
+      const payload = await api<{ documentId: number; duplicate: boolean; days: Array<{ date: string; taskCount: number }> }>("/api/import", {
         method: "POST",
         body: JSON.stringify({ filename: file.name, content })
       });
       const firstDate = payload.days[0]?.date;
       if (firstDate) setDate(firstDate);
+      setSelectedDocumentId(payload.documentId);
       setNotice(payload.duplicate ? "这个 Markdown 文件已经导入过。" : `导入完成：切分 ${payload.days.length} 天。`);
       await refreshBase(firstDate || date);
+      await refreshPreview(payload.documentId);
+      setView("preview");
     } catch (err) {
       setError(err instanceof Error ? err.message : "导入失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteDocument(document: DocumentSummary) {
+    const confirmed = window.confirm(`删除 ${document.filename}？这会同时删除它导入的任务和 Markdown 预览。`);
+    if (!confirmed) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await api(`/api/documents/${document.id}`, { method: "DELETE" });
+      if (selectedDocumentId === document.id) {
+        setSelectedDocumentId(null);
+        setPreview(null);
+      }
+      setNotice(`已删除 ${document.filename}`);
+      await refreshBase(date);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除失败");
     } finally {
       setBusy(false);
     }
@@ -312,9 +392,12 @@ function App() {
           <input type="file" accept=".md,text/markdown,text/plain" onChange={(event) => event.target.files?.[0] && importFile(event.target.files[0])} />
         </label>
 
-        <div className="segmented three">
+        <div className="segmented four">
           <button className={view === "day" ? "active" : ""} onClick={() => changeView("day")}>
             <CalendarDays size={16} /> 当日
+          </button>
+          <button className={view === "preview" ? "active" : ""} onClick={() => changeView("preview")}>
+            <FileText size={16} /> 预览
           </button>
           <button className={view === "week" ? "active" : ""} onClick={() => changeView("week")}>
             <Bot size={16} /> 周
@@ -322,6 +405,33 @@ function App() {
           <button className={view === "month" ? "active" : ""} onClick={() => changeView("month")}>
             <Bot size={16} /> 月
           </button>
+        </div>
+
+        <div className="documentList">
+          <h2>已导入文件</h2>
+          {documents.length ? (
+            documents.map((document) => (
+              <div key={document.id} className={document.id === selectedDocumentId ? "documentRow current" : "documentRow"}>
+                <button
+                  className="documentOpen"
+                  onClick={() => {
+                    setView("preview");
+                    refreshPreview(document.id).catch((err) => setError(err.message));
+                  }}
+                >
+                  <span>{document.filename}</span>
+                  <small>
+                    {document.dayCount} 天 · {document.taskCount} 任务
+                  </small>
+                </button>
+                <button className="deleteButton" aria-label={`删除 ${document.filename}`} onClick={() => deleteDocument(document)} disabled={busy}>
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))
+          ) : (
+            <p>还没有导入文件。</p>
+          )}
         </div>
 
         <div className="dateBox">
@@ -390,6 +500,8 @@ function App() {
             busy={busy}
             refresh={() => refreshBase(date)}
           />
+        ) : view === "preview" ? (
+          <PreviewView preview={preview} documents={documents} refreshPreview={refreshPreview} />
         ) : (
           <RangeView
             scope={scopeFromView(view)}
@@ -458,19 +570,6 @@ function DayView(props: {
           )}
         </div>
 
-        <div className="notesPreview">
-          <h3>Markdown 预览</h3>
-          {(day?.notes || []).map((note) => (
-            <article key={note.id} className="noteBlock">
-              <header>
-                <strong>{note.title}</strong>
-                <span>{note.file}</span>
-              </header>
-              <div className="markdown" dangerouslySetInnerHTML={{ __html: note.html }} />
-            </article>
-          ))}
-        </div>
-
         <div className="dailySummaryBottom">
           <h3>当天总结</h3>
           <textarea
@@ -496,6 +595,47 @@ function DayView(props: {
   );
 }
 
+function PreviewView(props: {
+  preview: DocumentPreview | null;
+  documents: DocumentSummary[];
+  refreshPreview: (documentId?: number | null) => Promise<void>;
+}) {
+  const { preview, documents, refreshPreview } = props;
+  return (
+    <div className="singleColumn">
+      <section className="mainPanel">
+        <div className="panelHeader">
+          <div>
+            <p className="eyebrow">Markdown preview</p>
+            <h2>{preview?.document.filename || "Markdown 预览"}</h2>
+          </div>
+          <button className="iconText" onClick={() => refreshPreview()}>
+            <RefreshCw size={16} /> 刷新
+          </button>
+        </div>
+
+        {preview ? (
+          <div className="previewStack">
+            {preview.days.map((day) => (
+              <article key={day.id} className="previewDay">
+                <header>
+                  <span>{day.date}</span>
+                  <strong>{day.title}</strong>
+                </header>
+                <div className="markdown readableMarkdown" dangerouslySetInnerHTML={{ __html: day.html }} />
+              </article>
+            ))}
+          </div>
+        ) : documents.length ? (
+          <div className="emptyState">从左侧选择一个 Markdown 文件查看预览。</div>
+        ) : (
+          <div className="emptyState">还没有导入 Markdown 文件。</div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function RangeView(props: {
   scope: Scope;
   date: string;
@@ -510,15 +650,14 @@ function RangeView(props: {
 }) {
   const { scope, date, summary, messages, chatDraft, setChatDraft, generateRange, sendChat, busy, aiDisabled } = props;
   const label = scope === "month" ? "月总结" : "周总结";
+  const title = rangeTitle(scope, date);
   return (
     <div className="weekGrid">
       <section className="mainPanel">
         <div className="panelHeader">
           <div>
             <p className="eyebrow">{scope === "month" ? "Monthly synthesis" : "Weekly synthesis"}</p>
-            <h2>
-              {date} 所在{scope === "month" ? "月" : "周"}
-            </h2>
+            <h2>{title}</h2>
           </div>
           <button className="primary" onClick={generateRange} disabled={aiDisabled}>
             <Sparkles size={16} /> 生成{label}

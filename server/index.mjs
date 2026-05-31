@@ -326,6 +326,25 @@ app.get("/api/progress", (_req, res) => {
   res.json({ total, completed, percent: total ? Math.round((completed / total) * 100) : 0 });
 });
 
+app.get("/api/documents", (_req, res) => {
+  const documents = db
+    .prepare(
+      `select
+        imported_documents.id,
+        imported_documents.filename,
+        imported_documents.imported_at as importedAt,
+        count(distinct day_notes.id) as dayCount,
+        count(tasks.id) as taskCount
+      from imported_documents
+      left join day_notes on day_notes.document_id = imported_documents.id
+      left join tasks on tasks.document_id = imported_documents.id
+      group by imported_documents.id
+      order by imported_documents.imported_at desc, imported_documents.id desc`
+    )
+    .all();
+  res.json({ documents });
+});
+
 app.post("/api/import", (req, res) => {
   const filename = String(req.body.filename || "uploaded.md").trim();
   const content = String(req.body.content || "");
@@ -333,6 +352,33 @@ app.post("/api/import", (req, res) => {
   if (!content.trim()) return res.status(400).json({ error: "Markdown content is required" });
   const result = importMarkdown(filename, content);
   res.status(result.duplicate ? 200 : 201).json(result);
+});
+
+app.get("/api/documents/:id/preview", (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid document id" });
+  const document = db
+    .prepare("select id, filename, content, imported_at as importedAt from imported_documents where id = ?")
+    .get(id);
+  if (!document) return res.status(404).json({ error: "Document not found" });
+  const days = db
+    .prepare("select id, date, title, content from day_notes where document_id = ? order by date asc, id asc")
+    .all(id)
+    .map((day) => ({ ...day, html: markdown.render(day.content) }));
+  res.json({ document: { ...document, html: markdown.render(document.content) }, days });
+});
+
+app.delete("/api/documents/:id", (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid document id" });
+  const existing = db.prepare("select id from imported_documents where id = ?").get(id);
+  if (!existing) return res.status(404).json({ error: "Document not found" });
+  db.transaction(() => {
+    db.prepare("delete from tasks where document_id = ?").run(id);
+    db.prepare("delete from day_notes where document_id = ?").run(id);
+    db.prepare("delete from imported_documents where id = ?").run(id);
+  })();
+  res.json({ ok: true });
 });
 
 app.get("/api/day/:date", (req, res) => {
