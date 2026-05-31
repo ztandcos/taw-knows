@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import MarkdownIt from "markdown-it";
 import {
   Bot,
   CalendarDays,
@@ -9,6 +10,7 @@ import {
   Circle,
   FileText,
   FileUp,
+  Flame,
   Menu,
   MessageSquareText,
   Moon,
@@ -17,9 +19,13 @@ import {
   Send,
   Sparkles,
   Sun,
-  Trash2
+  Trash2,
+  X,
+  Zap
 } from "lucide-react";
 import "./styles.css";
+
+const md = new MarkdownIt({ html: false, linkify: true, typographer: true });
 
 type View = "day" | "preview" | "week" | "month";
 type Scope = "week" | "month";
@@ -73,6 +79,7 @@ type Progress = {
   total: number;
   completed: number;
   percent: number;
+  streak: number;
 };
 
 type LlmStatus = {
@@ -126,6 +133,55 @@ function formatDateLocal(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+function parseNaturalDate(text: string): { date: string; text: string } {
+  const trimmed = text.trim();
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+
+  const patterns: Array<{ regex: RegExp; getDate: (m: RegExpMatchArray) => Date }> = [
+    { regex: /^今天\s+/, getDate: () => now },
+    { regex: /^明天\s+/, getDate: () => new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1) },
+    { regex: /^后天\s+/, getDate: () => new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2) },
+    { regex: /^大后天\s+/, getDate: () => new Date(now.getFullYear(), now.getMonth(), now.getDate() + 3) },
+    { regex: /^下周一日?\s*/, getDate: () => new Date(now.getFullYear(), now.getMonth(), now.getDate() + (7 - mondayOffset)) },
+    { regex: /^下周二日?\s*/, getDate: () => new Date(now.getFullYear(), now.getMonth(), now.getDate() + (8 - mondayOffset)) },
+    { regex: /^下周三日?\s*/, getDate: () => new Date(now.getFullYear(), now.getMonth(), now.getDate() + (9 - mondayOffset)) },
+    { regex: /^下周四日?\s*/, getDate: () => new Date(now.getFullYear(), now.getMonth(), now.getDate() + (10 - mondayOffset)) },
+    { regex: /^下周五日?\s*/, getDate: () => new Date(now.getFullYear(), now.getMonth(), now.getDate() + (11 - mondayOffset)) },
+    { regex: /^下周六日?\s*/, getDate: () => new Date(now.getFullYear(), now.getMonth(), now.getDate() + (12 - mondayOffset)) },
+    { regex: /^下周日日?\s*/, getDate: () => new Date(now.getFullYear(), now.getMonth(), now.getDate() + (13 - mondayOffset)) },
+    { regex: /^周一日?\s*/, getDate: () => new Date(now.getFullYear(), now.getMonth(), now.getDate() + ((1 - mondayOffset + 7) % 7 || 7)) },
+    { regex: /^周二日?\s*/, getDate: () => new Date(now.getFullYear(), now.getMonth(), now.getDate() + ((2 - mondayOffset + 7) % 7 || 7)) },
+    { regex: /^周三日?\s*/, getDate: () => new Date(now.getFullYear(), now.getMonth(), now.getDate() + ((3 - mondayOffset + 7) % 7 || 7)) },
+    { regex: /^周四周?\s*/, getDate: () => new Date(now.getFullYear(), now.getMonth(), now.getDate() + ((4 - mondayOffset + 7) % 7 || 7)) },
+    { regex: /^周五日?\s*/, getDate: () => new Date(now.getFullYear(), now.getMonth(), now.getDate() + ((5 - mondayOffset + 7) % 7 || 7)) },
+    { regex: /^周六日?\s*/, getDate: () => new Date(now.getFullYear(), now.getMonth(), now.getDate() + ((6 - mondayOffset + 7) % 7 || 7)) },
+    { regex: /^周日日?\s*/, getDate: () => new Date(now.getFullYear(), now.getMonth(), now.getDate() + ((7 - mondayOffset + 7) % 7 || 7)) }
+  ];
+
+  for (const { regex, getDate } of patterns) {
+    const match = trimmed.match(regex);
+    if (match) {
+      return { date: formatDateLocal(getDate(match)), text: trimmed.slice(match[0].length).trim() };
+    }
+  }
+
+  const daysMatch = trimmed.match(/^(\d+)天后\s+/);
+  if (daysMatch) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + Number(daysMatch[1]));
+    return { date: formatDateLocal(d), text: trimmed.slice(daysMatch[0].length).trim() };
+  }
+
+  const weeksMatch = trimmed.match(/^(\d+)周后\s+/);
+  if (weeksMatch) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + Number(weeksMatch[1]) * 7);
+    return { date: formatDateLocal(d), text: trimmed.slice(weeksMatch[0].length).trim() };
+  }
+
+  return { date: formatDateLocal(now), text: trimmed };
+}
+
 const today = formatDateLocal(new Date());
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
@@ -168,7 +224,7 @@ function App() {
   const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem("theme") === "dark" ? "dark" : "light"));
   const [dates, setDates] = useState<string[]>([]);
   const [config, setConfig] = useState<Config | null>(null);
-  const [progress, setProgress] = useState<Progress>({ total: 0, completed: 0, percent: 0 });
+  const [progress, setProgress] = useState<Progress>({ total: 0, completed: 0, percent: 0, streak: 0 });
   const [llm, setLlm] = useState<LlmStatus>({ ok: false, message: "尚未检查", model: "gpt-4o-mini" });
   const [llmForm, setLlmForm] = useState({ provider: "openai" as LlmProvider, apiUrl: "", apiKey: "", model: "gpt-4o-mini" });
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
@@ -184,6 +240,8 @@ function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [datesOpen, setDatesOpen] = useState(false);
+  const [quickCaptureOpen, setQuickCaptureOpen] = useState(false);
+  const [quickCaptureDraft, setQuickCaptureDraft] = useState("");
 
   const dayCompletion = useMemo(() => {
     const tasks = day?.tasks || [];
@@ -223,6 +281,15 @@ function App() {
         model: llmPayload.settings?.model || current.model
       }));
     }
+  }
+
+  async function refreshDay(targetDate = date) {
+    const [dayPayload, progressPayload] = await Promise.all([
+      api<DayPayload>(`/api/day/${targetDate}`),
+      api<Progress>("/api/progress")
+    ]);
+    setDay(dayPayload);
+    setProgress(progressPayload);
   }
 
   async function refreshRange(nextDate = date, nextView = view) {
@@ -335,28 +402,25 @@ function App() {
     }
   }
 
-  async function addManualTask() {
-    const text = manualTaskDraft.trim();
+  async function addManualTask(targetDate?: string, targetText?: string) {
+    const d = targetDate || date;
+    const text = (targetText || manualTaskDraft).trim();
     if (!text) return;
-    setBusy(true);
     setError("");
     try {
       await api("/api/tasks", {
         method: "POST",
-        body: JSON.stringify({ date, text })
+        body: JSON.stringify({ date: d, text })
       });
-      setManualTaskDraft("");
-      await refreshBase(date);
+      if (!targetText) setManualTaskDraft("");
+      await refreshDay(d);
     } catch (err) {
       setError(err instanceof Error ? err.message : "添加任务失败");
-    } finally {
-      setBusy(false);
     }
   }
 
   async function saveSummary() {
     if (!summaryDraft.trim()) return;
-    setBusy(true);
     setError("");
     try {
       await api("/api/summaries", {
@@ -364,13 +428,87 @@ function App() {
         body: JSON.stringify({ date, content: summaryDraft })
       });
       setSummaryDraft("");
-      await refreshBase(date);
+      await refreshDay(date);
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
+    }
+  }
+
+  async function deleteTask(taskId: string) {
+    setError("");
+    const previous = day;
+    setDay((current) =>
+      current ? { ...current, tasks: current.tasks.filter((t) => t.id !== taskId) } : current
+    );
+    try {
+      await api(`/api/tasks/${taskId}`, { method: "DELETE" });
+      const progressPayload = await api<Progress>("/api/progress");
+      setProgress(progressPayload);
+    } catch (err) {
+      setDay(previous);
+      setError(err instanceof Error ? err.message : "删除任务失败");
+    }
+  }
+
+  async function generateDailyReview() {
+    setBusy(true);
+    setError("");
+    try {
+      const payload = await api<{ generated: string }>(`/api/day/${date}/review`, { method: "POST" });
+      setSummaryDraft(payload.generated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "AI 回顾生成失败");
     } finally {
       setBusy(false);
     }
   }
+
+  async function handleQuickCapture() {
+    const lines = quickCaptureDraft.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) return;
+    setError("");
+    try {
+      for (const line of lines) {
+        const parsed = parseNaturalDate(line);
+        if (parsed.text) {
+          await api("/api/tasks", { method: "POST", body: JSON.stringify({ date: parsed.date, text: parsed.text }) });
+        }
+      }
+      setQuickCaptureDraft("");
+      setQuickCaptureOpen(false);
+      setNotice(`已添加 ${lines.length} 条任务`);
+      await refreshDay(date);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "快速添加失败");
+    }
+  }
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement).tagName;
+      const isInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+
+      if (e.key === "Escape") {
+        if (quickCaptureOpen) { setQuickCaptureOpen(false); return; }
+        if (error) { setError(""); return; }
+        if (notice) { setNotice(""); return; }
+        return;
+      }
+
+      if (isInput) return;
+
+      if (e.key === "n" || e.key === "N") { e.preventDefault(); setQuickCaptureOpen(true); return; }
+      if (e.key === "j") { e.preventDefault(); setDate(shiftDate(date, 1)); return; }
+      if (e.key === "k") { e.preventDefault(); setDate(shiftDate(date, -1)); return; }
+      if (e.key === "t" || e.key === "T") { e.preventDefault(); setTheme((t) => (t === "light" ? "dark" : "light")); return; }
+      if (e.key === "1") { e.preventDefault(); changeView("day"); return; }
+      if (e.key === "2") { e.preventDefault(); changeView("preview"); return; }
+      if (e.key === "3") { e.preventDefault(); changeView("week"); return; }
+      if (e.key === "4") { e.preventDefault(); changeView("month"); return; }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [quickCaptureOpen, error, notice, date, view]);
 
   async function checkLlm() {
     setBusy(true);
@@ -475,6 +613,37 @@ function App() {
 
   return (
     <main className="shell">
+      {quickCaptureOpen && (
+        <div className="quickCaptureOverlay" onClick={() => setQuickCaptureOpen(false)}>
+          <div className="quickCapturePanel" onClick={(e) => e.stopPropagation()}>
+            <div className="quickCaptureHeader">
+              <Zap size={18} />
+              <h3>快速捕获</h3>
+              <button className="quickCaptureClose" onClick={() => setQuickCaptureOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <textarea
+              className="quickCaptureInput"
+              value={quickCaptureDraft}
+              onChange={(e) => setQuickCaptureDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleQuickCapture(); }
+                if (e.key === "Escape") setQuickCaptureOpen(false);
+              }}
+              placeholder={"每行一条任务，支持日期前缀：\n明天 写周报\n后天 整理文档\n提交PR"}
+              autoFocus
+            />
+            <div className="quickCaptureFooter">
+              <span>支持 "明天/后天/周X 任务名" 格式 · Enter 添加 · Shift+Enter 换行</span>
+              <button className="primary" onClick={handleQuickCapture} disabled={!quickCaptureDraft.trim()}>
+                添加
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <aside className="sidebar">
         <div className="brand">
           <Sparkles size={22} />
@@ -492,9 +661,12 @@ function App() {
           <div className="progressLine">
             <span style={{ width: `${progress.percent}%` }} />
           </div>
-          <p>
-            {progress.completed}/{progress.total} 已完成
-          </p>
+          <div className="progressMeta">
+            <p>{progress.completed}/{progress.total} 已完成</p>
+            {progress.streak > 0 && (
+              <p className="streakBadge"><Flame size={14} /> 连续 {progress.streak} 天</p>
+            )}
+          </div>
         </div>
 
         <div className="segmented four">
@@ -669,11 +841,14 @@ function App() {
             setSummaryDraft={setSummaryDraft}
             saveSummary={saveSummary}
             toggleTask={toggleTask}
+            deleteTask={deleteTask}
             manualTaskDraft={manualTaskDraft}
             setManualTaskDraft={setManualTaskDraft}
-            addManualTask={addManualTask}
+            addManualTask={() => addManualTask()}
             busy={busy}
-            refresh={() => refreshBase(date)}
+            refresh={() => refreshDay(date)}
+            aiAvailable={llm.ok}
+            generateDailyReview={generateDailyReview}
           />
         ) : view === "preview" ? (
           <PreviewView preview={preview} documents={documents} refreshPreview={refreshPreview} />
@@ -704,11 +879,14 @@ function DayView(props: {
   setSummaryDraft: (value: string) => void;
   saveSummary: () => void;
   toggleTask: (task: Task) => void;
+  deleteTask: (taskId: string) => void;
   manualTaskDraft: string;
   setManualTaskDraft: (value: string) => void;
   addManualTask: () => void;
   refresh: () => void;
   busy: boolean;
+  aiAvailable: boolean;
+  generateDailyReview: () => void;
 }) {
   const {
     date,
@@ -718,11 +896,14 @@ function DayView(props: {
     setSummaryDraft,
     saveSummary,
     toggleTask,
+    deleteTask,
     manualTaskDraft,
     setManualTaskDraft,
     addManualTask,
     refresh,
-    busy
+    busy,
+    aiAvailable,
+    generateDailyReview
   } = props;
 
   return (
@@ -752,7 +933,7 @@ function DayView(props: {
             }}
             placeholder="手动添加一条清单任务..."
           />
-          <button className="primary" disabled={busy || !manualTaskDraft.trim()} onClick={addManualTask}>
+          <button className="primary" disabled={!manualTaskDraft.trim()} onClick={addManualTask}>
             添加
           </button>
         </div>
@@ -760,26 +941,41 @@ function DayView(props: {
         <div className="taskList">
           {(day?.tasks || []).length ? (
             day?.tasks.map((task) => (
-              <button key={task.id} className="taskRow taskButton" onClick={() => toggleTask(task)}>
-                {task.completed ? <CheckCircle2 className="done" size={20} /> : <Circle className="todo" size={20} />}
-                <div>
+              <div key={task.id} className="taskRow">
+                <button className="taskToggle" onClick={() => toggleTask(task)}>
+                  {task.completed ? <CheckCircle2 className="done" size={20} /> : <Circle className="todo" size={20} />}
+                </button>
+                <div className="taskText">
                   <p>{task.text}</p>
                 </div>
-              </button>
+                <button className="taskDelete" onClick={() => deleteTask(task.id)} aria-label="删除任务">
+                  <Trash2 size={14} />
+                </button>
+              </div>
             ))
           ) : (
-            <div className="emptyState">这一天没有解析到 Markdown checkbox 任务。</div>
+            <div className="emptyState">这一天还没有任务。</div>
           )}
         </div>
 
         <div className="dailySummaryBottom">
-          <h3>当天总结</h3>
+          <div className="summaryHeader">
+            <h3>当天总结</h3>
+            {aiAvailable && (
+              <button className="iconText" onClick={generateDailyReview} disabled={busy}>
+                <Sparkles size={14} /> AI 回顾
+              </button>
+            )}
+          </div>
           <textarea
             value={summaryDraft}
             onChange={(event) => setSummaryDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if ((event.ctrlKey || event.metaKey) && event.key === "Enter") saveSummary();
+            }}
             placeholder="记录今天推进了什么、卡住了什么、明天要保留的判断..."
           />
-          <button className="primary" disabled={busy || !summaryDraft.trim()} onClick={saveSummary}>
+          <button className="primary" disabled={!summaryDraft.trim()} onClick={saveSummary}>
             <Save size={16} /> 保存总结
           </button>
 
@@ -853,6 +1049,8 @@ function RangeView(props: {
   const { scope, date, summary, messages, chatDraft, setChatDraft, generateRange, sendChat, busy, aiDisabled } = props;
   const label = scope === "month" ? "月总结" : "周总结";
   const title = rangeTitle(scope, date);
+  const summaryHtml = useMemo(() => (summary ? md.render(summary) : ""), [summary]);
+
   return (
     <div className="weekGrid">
       <section className="mainPanel">
@@ -865,7 +1063,11 @@ function RangeView(props: {
             <Sparkles size={16} /> 生成{label}
           </button>
         </div>
-        <pre className="weeklyText">{summary || `切到${label}后会显示当前范围的本地语料概览。`}</pre>
+        {summaryHtml ? (
+          <div className="weeklyRendered markdown readableMarkdown" dangerouslySetInnerHTML={{ __html: summaryHtml }} />
+        ) : (
+          <pre className="weeklyText">{`切到${label}后会显示当前范围的本地语料概览。`}</pre>
+        )}
       </section>
 
       <aside className="chatPanel">
@@ -878,7 +1080,7 @@ function RangeView(props: {
             messages.map((message) => (
               <article key={message.id} className={`message ${message.role}`}>
                 <span>{message.role === "user" ? "你" : "助手"}</span>
-                <p>{message.content}</p>
+                <div dangerouslySetInnerHTML={{ __html: md.render(message.content) }} />
               </article>
             ))
           ) : (
@@ -889,6 +1091,9 @@ function RangeView(props: {
           <textarea
             value={chatDraft}
             onChange={(event) => setChatDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendChat(); }
+            }}
             placeholder={scope === "month" ? "围绕这个月的任务和小结提问..." : "围绕这一周的任务和小结提问..."}
             disabled={aiDisabled}
           />

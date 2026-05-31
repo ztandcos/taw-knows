@@ -538,7 +538,25 @@ app.get("/api/progress", (_req, res) => {
     .get();
   const total = Number(row.total || 0);
   const completed = Number(row.completed || 0);
-  res.json({ total, completed, percent: total ? Math.round((completed / total) * 100) : 0 });
+
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const completedDates = db
+    .prepare("select distinct date from tasks where completed = 1 order by date desc")
+    .all()
+    .map((r) => r.date);
+  let streak = 0;
+  let checkDate = parseISO(todayStr);
+  for (const d of completedDates) {
+    const expected = format(checkDate, "yyyy-MM-dd");
+    if (d === expected) {
+      streak++;
+      checkDate = addDays(checkDate, -1);
+    } else if (d < expected) {
+      break;
+    }
+  }
+
+  res.json({ total, completed, percent: total ? Math.round((completed / total) * 100) : 0, streak });
 });
 
 app.get("/api/documents", (_req, res) => {
@@ -641,6 +659,34 @@ app.get("/api/day/:date", (req, res) => {
   res.json({ date, notes, tasks, summaries });
 });
 
+app.post("/api/day/:date/review", async (req, res) => {
+  const date = validateDate(req.params.date);
+  if (!date) return res.status(400).json({ error: "Invalid date" });
+  if (!hasLlmConfig()) return res.status(503).json({ error: "LLM is not configured" });
+
+  const tasks = taskRows("where tasks.date = ?", [date]);
+  const summaries = db
+    .prepare("select content from daily_summaries where date = ? order by id desc")
+    .all(date)
+    .map((s) => s.content);
+
+  const prompt = [
+    "你是用户的每日复盘助手。根据今天的任务完成情况和已有小结，生成一份简洁的每日回顾。",
+    `日期：${date}`,
+    `任务：${JSON.stringify(tasks.map((t) => ({ text: t.text, completed: t.completed })), null, 2)}`,
+    `已有小结：${summaries.length ? summaries.join("\n---\n") : "无"}`,
+    "请用中文输出，格式如下（不要多余解释）：",
+    "## 今日完成\n- [列出已完成的任务]\n\n## 待推进\n- [列出未完成的任务]\n\n## 明日建议\n- [基于未完成任务给出 1-3 条建议]"
+  ].join("\n\n");
+
+  try {
+    const generated = await callLlm([{ role: "user", content: prompt }]);
+    res.json({ generated, date });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "AI review failed" });
+  }
+});
+
 app.patch("/api/tasks/:id", (req, res) => {
   const id = String(req.params.id || "");
   const completed = Boolean(req.body.completed);
@@ -650,6 +696,13 @@ app.patch("/api/tasks/:id", (req, res) => {
   if (!info.changes) return res.status(404).json({ error: "Task not found" });
   const task = taskRows("where tasks.id = ?", [id])[0];
   res.json({ task });
+});
+
+app.delete("/api/tasks/:id", (req, res) => {
+  const id = String(req.params.id || "");
+  const info = db.prepare("delete from tasks where id = ?").run(id);
+  if (!info.changes) return res.status(404).json({ error: "Task not found" });
+  res.json({ ok: true });
 });
 
 app.post("/api/tasks", (req, res) => {
