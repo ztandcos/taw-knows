@@ -77,6 +77,17 @@ db.exec(`
     content text not null,
     created_at text not null default (datetime('now'))
   );
+
+  create table if not exists llm_settings (
+    id integer primary key check (id = 1),
+    provider text not null default 'openai',
+    api_url text not null default '',
+    api_key text not null default '',
+    model text not null default 'gpt-4o-mini',
+    checked_ok integer not null default 0,
+    last_message text not null default '尚未检查',
+    updated_at text not null default (datetime('now'))
+  );
 `);
 
 const chatColumns = db.prepare("pragma table_info(chat_messages)").all().map((column) => column.name);
@@ -87,6 +98,11 @@ if (!chatColumns.includes("scope_start")) {
   db.exec("alter table chat_messages add column scope_start text");
   db.exec("update chat_messages set scope_start = week_start where scope_start is null");
 }
+
+db.prepare(
+  `insert or ignore into llm_settings (id, provider, api_url, api_key, model, checked_ok, last_message)
+   values (1, 'openai', '', '', 'gpt-4o-mini', 0, '尚未配置')`
+).run();
 
 app.use(express.json({ limit: "10mb" }));
 
@@ -254,20 +270,56 @@ function localSummary(corpus) {
   ].join("\n\n");
 }
 
-function hasLlmConfig() {
-  return Boolean(process.env.OPENAI_API_KEY);
+function maskSecret(value) {
+  if (!value) return "";
+  if (value.length <= 8) return "********";
+  return `${value.slice(0, 4)}${"*".repeat(Math.min(12, value.length - 8))}${value.slice(-4)}`;
 }
 
-async function callLlm(messages) {
-  if (!hasLlmConfig()) throw new Error("OPENAI_API_KEY is not configured");
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+function getLlmSettings() {
+  return db.prepare("select provider, api_url as apiUrl, api_key as apiKey, model, checked_ok as checkedOk, last_message as lastMessage from llm_settings where id = 1").get();
+}
+
+function publicLlmSettings(settings = getLlmSettings()) {
+  const configured = Boolean(settings.apiKey && settings.model);
+  return {
+    provider: settings.provider,
+    apiUrlMasked: maskSecret(settings.apiUrl),
+    apiKeyMasked: maskSecret(settings.apiKey),
+    model: settings.model,
+    configured,
+    ok: configured && Boolean(settings.checkedOk),
+    message: settings.lastMessage || "尚未检查"
+  };
+}
+
+function normalizeApiUrl(provider, apiUrl) {
+  const trimmed = String(apiUrl || "").trim();
+  if (provider === "anthropic") {
+    const base = trimmed || "https://api.anthropic.com/v1/messages";
+    if (base.endsWith("/messages")) return base;
+    return `${base.replace(/\/$/, "")}/messages`;
+  }
+
+  const base = trimmed || "https://api.openai.com/v1/chat/completions";
+  if (base.endsWith("/chat/completions")) return base;
+  return `${base.replace(/\/$/, "")}/chat/completions`;
+}
+
+function hasLlmConfig() {
+  const settings = getLlmSettings();
+  return Boolean(settings.apiKey && settings.model && settings.checkedOk);
+}
+
+async function callOpenAiCompatible(settings, messages) {
+  const response = await fetch(normalizeApiUrl("openai", settings.apiUrl), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+      Authorization: `Bearer ${settings.apiKey}`
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      model: settings.model,
       messages,
       temperature: 0.2
     })
@@ -275,21 +327,75 @@ async function callLlm(messages) {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`OpenAI API request failed: ${response.status} ${text}`);
+    throw new Error(`OpenAI-compatible API request failed: ${response.status} ${text}`);
   }
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error("OpenAI API returned an empty response");
+  if (!content) throw new Error("OpenAI-compatible API returned an empty response");
+  return content;
+}
+
+async function callAnthropicCompatible(settings, messages) {
+  const system = messages.find((message) => message.role === "system")?.content;
+  const anthropicMessages = messages
+    .filter((message) => message.role !== "system")
+    .map((message) => ({
+      role: message.role === "assistant" ? "assistant" : "user",
+      content: String(message.content)
+    }));
+
+  const response = await fetch(normalizeApiUrl("anthropic", settings.apiUrl), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": settings.apiKey,
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify({
+      model: settings.model,
+      max_tokens: 1600,
+      system,
+      messages: anthropicMessages
+    })
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Anthropic-compatible API request failed: ${response.status} ${text}`);
+  }
+  const data = await response.json();
+  const content = data.content?.map((part) => part.text || "").join("").trim();
+  if (!content) throw new Error("Anthropic-compatible API returned an empty response");
+  return content;
+}
+
+async function callLlm(messages) {
+  const settings = getLlmSettings();
+  if (!settings.apiKey) throw new Error("页面中尚未配置 API Key");
+  if (!settings.model) throw new Error("页面中尚未配置模型名称");
+  const content =
+    settings.provider === "anthropic"
+      ? await callAnthropicCompatible(settings, messages)
+      : await callOpenAiCompatible(settings, messages);
   return content;
 }
 
 async function checkLlm() {
-  if (!hasLlmConfig()) return { ok: false, message: "启动前未配置 OPENAI_API_KEY", model: process.env.OPENAI_MODEL || "gpt-4o-mini" };
+  const settings = getLlmSettings();
+  if (!settings.apiKey || !settings.model) {
+    const message = "请先在页面中配置 API Key 和模型名称";
+    db.prepare("update llm_settings set checked_ok = 0, last_message = ?, updated_at = datetime('now') where id = 1").run(message);
+    return { ok: false, message, model: settings.model || "未配置", settings: publicLlmSettings(getLlmSettings()) };
+  }
   try {
     await callLlm([{ role: "user", content: "请只回复：ok" }]);
-    return { ok: true, message: "OpenAI API 检查通过", model: process.env.OPENAI_MODEL || "gpt-4o-mini" };
+    const message = "大模型 API 检查通过";
+    db.prepare("update llm_settings set checked_ok = 1, last_message = ?, updated_at = datetime('now') where id = 1").run(message);
+    return { ok: true, message, model: settings.model, settings: publicLlmSettings(getLlmSettings()) };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "OpenAI API 检查失败", model: process.env.OPENAI_MODEL || "gpt-4o-mini" };
+    const message = error instanceof Error ? error.message : "大模型 API 检查失败";
+    db.prepare("update llm_settings set checked_ok = 0, last_message = ?, updated_at = datetime('now') where id = 1").run(message);
+    return { ok: false, message, model: settings.model, settings: publicLlmSettings(getLlmSettings()) };
   }
 }
 
@@ -305,10 +411,12 @@ function messagesFor(scope, scopeStart) {
 }
 
 app.get("/api/config", (_req, res) => {
+  const llm = publicLlmSettings();
   res.json({
     dataPath: dbPath,
-    llmConfigured: hasLlmConfig(),
-    llmModel: process.env.OPENAI_MODEL || "gpt-4o-mini"
+    llmConfigured: llm.configured,
+    llmModel: llm.model,
+    llmProvider: llm.provider
   });
 });
 
@@ -430,11 +538,59 @@ app.post("/api/summaries", (req, res) => {
 });
 
 app.get("/api/llm/status", async (_req, res) => {
-  res.json(await checkLlm());
+  const settings = publicLlmSettings();
+  res.json({ ok: settings.ok, message: settings.message, model: settings.model, settings });
 });
 
 app.post("/api/llm/check", async (_req, res) => {
   res.json(await checkLlm());
+});
+
+app.get("/api/llm/settings", (_req, res) => {
+  res.json({ settings: publicLlmSettings() });
+});
+
+app.post("/api/llm/settings", (req, res) => {
+  const current = getLlmSettings();
+  const provider = String(req.body.provider || current.provider || "openai");
+  if (!["openai", "anthropic"].includes(provider)) return res.status(400).json({ error: "Unsupported provider" });
+
+  const apiUrlProvided = Object.prototype.hasOwnProperty.call(req.body, "apiUrl");
+  const apiKeyProvided = Object.prototype.hasOwnProperty.call(req.body, "apiKey");
+  const modelProvided = Object.prototype.hasOwnProperty.call(req.body, "model");
+  const apiUrlInput = apiUrlProvided ? String(req.body.apiUrl || "").trim() : "";
+  const apiKeyInput = apiKeyProvided ? String(req.body.apiKey || "").trim() : "";
+  const modelInput = modelProvided ? String(req.body.model || "").trim() : "";
+  const providerChanged = provider !== current.provider;
+  const apiUrl = apiUrlProvided ? apiUrlInput : current.apiUrl || "";
+  const apiKey = apiKeyProvided ? apiKeyInput : current.apiKey || "";
+  const model = modelProvided ? modelInput : current.model || (provider === "anthropic" ? "claude-3-5-sonnet-latest" : "gpt-4o-mini");
+  const changed =
+    providerChanged ||
+    apiUrl !== current.apiUrl ||
+    apiKey !== current.apiKey ||
+    model !== current.model;
+  const checkedOk = changed ? 0 : current.checkedOk ? 1 : 0;
+  const message = changed ? "配置已保存，请检查大模型" : current.lastMessage || "配置已保存";
+
+  db.prepare(
+    `update llm_settings
+     set provider = ?, api_url = ?, api_key = ?, model = ?, checked_ok = ?, last_message = ?, updated_at = datetime('now')
+     where id = 1`
+  ).run(provider, apiUrl, apiKey, model, checkedOk, message);
+
+  const settings = publicLlmSettings();
+  res.json({ settings, ok: settings.ok, message: settings.message, model: settings.model });
+});
+
+app.delete("/api/llm/settings", (_req, res) => {
+  db.prepare(
+    `update llm_settings
+     set provider = 'openai', api_url = '', api_key = '', model = 'gpt-4o-mini', checked_ok = 0, last_message = '尚未配置', updated_at = datetime('now')
+     where id = 1`
+  ).run();
+  const settings = publicLlmSettings();
+  res.json({ settings, ok: settings.ok, message: settings.message, model: settings.model });
 });
 
 app.get(/^\/api\/(week|month)\/([^/]+)$/, (req, res) => {

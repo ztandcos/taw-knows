@@ -85,7 +85,7 @@ data/app.db
 
 ## API 配置
 
-复制配置模板：
+服务端基础配置可以复制模板：
 
 ```bash
 cp .env.example .env
@@ -96,8 +96,11 @@ cp .env.example .env
 ```env
 PORT=4317
 DATA_DIR=./data
-OPENAI_API_KEY=your_key
-OPENAI_MODEL=gpt-4o-mini
 ```
 
-如果启动前没有配置 `OPENAI_API_KEY`，页面里的 AI 总结和 AI 对话会保持禁用。配置完成后重新启动服务，再点击“检查大模型”确认可用。
+大模型 API 在页面中配置，不需要写进 `.env`。页面支持两种协议：
+
+- OpenAI-compatible：填写 API URL、API Key、模型名，例如 `gpt-4o-mini`。
+- Anthropic-compatible：填写 API URL、API Key、模型名，例如 `claude-3-5-sonnet-latest`。
+
+API URL 和 API Key 会保存到本地 SQLite，不会提交到 Git，也不会在页面或接口中明文回显；页面只显示脱敏占位。保存配置后，需要点击“检查大模型”，检查通过后才会启用 AI 总结和对话。

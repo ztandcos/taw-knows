@@ -85,7 +85,7 @@ The database file is ignored by Git.
 
 ## API Configuration
 
-Copy the configuration template:
+Copy the base server configuration template:
 
 ```bash
 cp .env.example .env
@@ -96,8 +96,11 @@ Example `.env`:
 ```env
 PORT=4317
 DATA_DIR=./data
-OPENAI_API_KEY=your_key
-OPENAI_MODEL=gpt-4o-mini
 ```
 
-If `OPENAI_API_KEY` is not configured before startup, AI summaries and AI chat stay disabled. Configure the key, restart the server, then use the in-page LLM check button.
+LLM API settings are configured in the page, not in `.env`. Two protocols are supported:
+
+- OpenAI-compatible: API URL, API Key, and model name, such as `gpt-4o-mini`.
+- Anthropic-compatible: API URL, API Key, and model name, such as `claude-3-5-sonnet-latest`.
+
+The API URL and API Key are stored in local SQLite. They are not committed to Git and are never returned in plain text by the page or API; only masked placeholders are shown. After saving settings, click the in-page LLM check button. AI summaries and chat are enabled only after the check passes.

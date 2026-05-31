@@ -25,6 +25,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -289,6 +290,22 @@ button {
   overflow-wrap: anywhere;
 }
 
+.llmForm {
+  display: grid;
+  gap: 7px;
+}
+
+.llmForm input,
+.llmForm select {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: #fffdf8;
+  color: var(--color-text-dark);
+  padding: 0 10px;
+}
+
 .llmStatus.ok > div {
   color: var(--color-primary);
 }
@@ -356,6 +373,10 @@ h3 {
   padding: 0 12px;
   background: #ebe9df;
   color: var(--color-text-dark);
+}
+
+.dangerText {
+  color: #9a4b42;
 }
 
 .primary {

@@ -57,6 +57,7 @@ type Config = {
   dataPath: string;
   llmConfigured: boolean;
   llmModel: string;
+  llmProvider: LlmProvider;
 };
 
 type DayPayload = {
@@ -76,6 +77,19 @@ type LlmStatus = {
   ok: boolean;
   message: string;
   model: string;
+  settings?: LlmSettings;
+};
+
+type LlmProvider = "openai" | "anthropic";
+
+type LlmSettings = {
+  provider: LlmProvider;
+  apiUrlMasked: string;
+  apiKeyMasked: string;
+  model: string;
+  configured: boolean;
+  ok: boolean;
+  message: string;
 };
 
 type DocumentSummary = {
@@ -143,6 +157,7 @@ function App() {
   const [config, setConfig] = useState<Config | null>(null);
   const [progress, setProgress] = useState<Progress>({ total: 0, completed: 0, percent: 0 });
   const [llm, setLlm] = useState<LlmStatus>({ ok: false, message: "尚未检查", model: "gpt-4o-mini" });
+  const [llmForm, setLlmForm] = useState({ provider: "openai" as LlmProvider, apiUrl: "", apiKey: "", model: "gpt-4o-mini" });
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
   const [preview, setPreview] = useState<DocumentPreview | null>(null);
@@ -181,6 +196,13 @@ function App() {
     }
     setDay(dayPayload);
     setLlm(llmPayload);
+    if (llmPayload.settings) {
+      setLlmForm((current) => ({
+        ...current,
+        provider: llmPayload.settings?.provider || current.provider,
+        model: llmPayload.settings?.model || current.model
+      }));
+    }
   }
 
   async function refreshRange(nextDate = date, nextView = view) {
@@ -319,6 +341,49 @@ function App() {
       setNotice(payload.ok ? "大模型检查通过。" : "大模型检查失败，AI 总结和对话已禁用。");
     } catch (err) {
       setLlm((current) => ({ ...current, ok: false, message: err instanceof Error ? err.message : "检查失败" }));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveLlmSettings() {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const body = {
+        provider: llmForm.provider,
+        model: llmForm.model,
+        ...(llmForm.apiUrl.trim() ? { apiUrl: llmForm.apiUrl.trim() } : {}),
+        ...(llmForm.apiKey.trim() ? { apiKey: llmForm.apiKey.trim() } : {})
+      };
+      const payload = await api<LlmStatus>("/api/llm/settings", {
+        method: "POST",
+        body: JSON.stringify(body)
+      });
+      setLlm(payload);
+      setLlmForm((current) => ({ ...current, apiUrl: "", apiKey: "" }));
+      setNotice("API 配置已保存。请点击“检查大模型”验证后启用 AI 功能。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存 API 配置失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clearLlmSettings() {
+    const confirmed = window.confirm("清空当前大模型 API 配置？");
+    if (!confirmed) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const payload = await api<LlmStatus>("/api/llm/settings", { method: "DELETE" });
+      setLlm(payload);
+      setLlmForm({ provider: "openai", apiUrl: "", apiKey: "", model: "gpt-4o-mini" });
+      setNotice("API 配置已清空。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "清空 API 配置失败");
     } finally {
       setBusy(false);
     }
@@ -468,6 +533,45 @@ function App() {
             <span>{llm.ok ? "LLM 可用" : "LLM 不可用"}</span>
           </div>
           <p>{llm.message}</p>
+          <div className="llmForm">
+            <select
+              value={llmForm.provider}
+              onChange={(event) => {
+                const provider = event.target.value as LlmProvider;
+                setLlmForm((current) => ({
+                  ...current,
+                  provider,
+                  model: provider === "anthropic" ? "claude-3-5-sonnet-latest" : "gpt-4o-mini"
+                }));
+              }}
+            >
+              <option value="openai">OpenAI 协议</option>
+              <option value="anthropic">Anthropic 协议</option>
+            </select>
+            <input
+              type="password"
+              value={llmForm.apiUrl}
+              placeholder={llm.settings?.apiUrlMasked || (llmForm.provider === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1")}
+              onChange={(event) => setLlmForm((current) => ({ ...current, apiUrl: event.target.value }))}
+            />
+            <input
+              type="password"
+              value={llmForm.apiKey}
+              placeholder={llm.settings?.apiKeyMasked || "API Key"}
+              onChange={(event) => setLlmForm((current) => ({ ...current, apiKey: event.target.value }))}
+            />
+            <input
+              value={llmForm.model}
+              placeholder="模型名称"
+              onChange={(event) => setLlmForm((current) => ({ ...current, model: event.target.value }))}
+            />
+          </div>
+          <button className="iconText" onClick={saveLlmSettings} disabled={busy}>
+            <Save size={15} /> 保存配置
+          </button>
+          <button className="iconText dangerText" onClick={clearLlmSettings} disabled={busy}>
+            <Trash2 size={15} /> 清空配置
+          </button>
           <button className="iconText" onClick={checkLlm} disabled={busy}>
             <RefreshCw size={15} /> 检查大模型
           </button>
