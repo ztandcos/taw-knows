@@ -20,6 +20,22 @@ import MarkdownIt from "markdown-it";
 
 const app = express();
 const markdown = new MarkdownIt({ html: false, linkify: true, typographer: true });
+
+const LLM_PARSE_SYSTEM_PROMPT = [
+  "你是一个 Markdown 日记/任务文件解析器。用户会给你一段 Markdown 文本，你需要：",
+  "1. 识别其中按日期分组的结构。常见的日期标识包括：",
+  '   - 标题中包含日期，如 "### Day 2026-06-01"、"## 6月1日"、"# 2026/06/01"',
+  '   - 标题中包含"第X天"、"Day X"等相对日期描述',
+  "   - frontmatter 中的 date 字段",
+  "   - 文件名中的日期",
+  "2. 提取每天的任务项，包括：",
+  "   - checkbox 任务：- [ ] 未完成，- [x] 已完成",
+  "   - 子标题（####、#####、######）作为任务项",
+  "   - 其他有明确动作描述的条目",
+  "3. 如果无法识别按日期分组的结构，将全部内容归为一天。",
+  "你必须只返回一个 JSON 对象，不要返回任何其他文字、不要使用 markdown code fence。格式如下：",
+  '{"days":[{"date":"YYYY-MM-DD","title":"标题","tasks":[{"text":"任务描述","completed":false}]}]}'
+].join("\n");
 const rootDir = process.cwd();
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(rootDir, "data"));
 const dbPath = path.join(dataDir, "app.db");
@@ -189,7 +205,7 @@ function parseTasks(content, documentId, dayNoteId, date) {
     .filter(Boolean);
 }
 
-function importMarkdown(filename, content) {
+async function importMarkdown(filename, content) {
   const hash = hashText(content);
   const existing = db.prepare("select id from imported_documents where content_hash = ?").get(hash);
   if (existing) return { documentId: existing.id, duplicate: true, days: [] };
@@ -201,15 +217,49 @@ function importMarkdown(filename, content) {
     values (@id, @documentId, @dayNoteId, @date, @line, @text, @completed)
   `);
 
+  let parsedDays;
+  let llmUsed = false;
+  if (hasLlmConfig()) {
+    try {
+      const llmDays = await callLlmForParse(filename, content);
+      parsedDays = llmDays.map((day) => ({
+        date: day.date,
+        title: day.title,
+        content: day.content || day.tasks.map((t) => (t.completed ? `- [x] ${t.text}` : `- [ ] ${t.text}`)).join("\n"),
+        taskEnabled: true,
+        llmTasks: day.tasks
+      }));
+      llmUsed = true;
+    } catch (err) {
+      console.warn(`LLM parse failed for ${filename}, falling back to regex:`, err.message);
+      parsedDays = splitMarkdownByDate(filename, content);
+    }
+  } else {
+    parsedDays = splitMarkdownByDate(filename, content);
+  }
+
   return db.transaction(() => {
     const documentId = Number(insertDocument.run(filename, content, hash).lastInsertRowid);
-    const days = splitMarkdownByDate(filename, content).map((day) => {
+    const days = parsedDays.map((day) => {
       const dayNoteId = Number(insertDay.run(documentId, day.date, day.title, day.content).lastInsertRowid);
-      const tasks = day.taskEnabled ? parseTasks(day.content, documentId, dayNoteId, day.date) : [];
+      let tasks;
+      if (llmUsed && day.llmTasks) {
+        tasks = day.llmTasks.map((t, index) => ({
+          id: hashText(`${documentId}:${dayNoteId}:${day.date}:${index + 1}:${t.text}`),
+          documentId,
+          dayNoteId,
+          date: day.date,
+          line: index + 1,
+          text: t.text,
+          completed: t.completed ? 1 : 0
+        }));
+      } else {
+        tasks = day.taskEnabled ? parseTasks(day.content, documentId, dayNoteId, day.date) : [];
+      }
       tasks.forEach((task) => insertTask.run(task));
-      return { ...day, id: dayNoteId, taskCount: tasks.length };
+      return { date: day.date, title: day.title, id: dayNoteId, taskCount: tasks.length };
     });
-    return { documentId, duplicate: false, days };
+    return { documentId, duplicate: false, days, llmUsed };
   })();
 }
 
@@ -415,6 +465,28 @@ async function callLlm(messages) {
   return content;
 }
 
+async function callLlmForParse(filename, content) {
+  const fallbackDate = dateFromFilename(filename) || format(new Date(), "yyyy-MM-dd");
+  const userMessage = `文件名：${filename}\n\n---\n\n${content}`;
+  const raw = await callLlm([
+    { role: "system", content: LLM_PARSE_SYSTEM_PROMPT },
+    { role: "user", content: userMessage }
+  ]);
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const parsed = JSON.parse(cleaned);
+  if (!parsed.days || !Array.isArray(parsed.days)) throw new Error("LLM 返回结构缺少 days 数组");
+  return parsed.days.map((day, index) => ({
+    date: validateDate(day.date) || format(addDays(parseISO(fallbackDate), index), "yyyy-MM-dd"),
+    title: String(day.title || `Day ${index + 1}`),
+    content: String(day.content || ""),
+    tasks: Array.isArray(day.tasks)
+      ? day.tasks
+          .map((t) => ({ text: String(t.text || "").trim(), completed: Boolean(t.completed) }))
+          .filter((t) => t.text)
+      : []
+  }));
+}
+
 async function checkLlm() {
   const settings = getLlmSettings();
   if (!settings.apiKey || !settings.model) {
@@ -489,13 +561,17 @@ app.get("/api/documents", (_req, res) => {
   res.json({ documents });
 });
 
-app.post("/api/import", (req, res) => {
+app.post("/api/import", async (req, res) => {
   const filename = String(req.body.filename || "uploaded.md").trim();
   const content = String(req.body.content || "");
   if (!filename.toLowerCase().endsWith(".md")) return res.status(400).json({ error: "Only .md files are supported" });
   if (!content.trim()) return res.status(400).json({ error: "Markdown content is required" });
-  const result = importMarkdown(filename, content);
-  res.status(result.duplicate ? 200 : 201).json(result);
+  try {
+    const result = await importMarkdown(filename, content);
+    res.status(result.duplicate ? 200 : 201).json(result);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Import failed" });
+  }
 });
 
 app.get("/api/documents/:id/preview", (req, res) => {
