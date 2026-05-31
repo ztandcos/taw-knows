@@ -5,6 +5,7 @@ import process from "node:process";
 import Database from "better-sqlite3";
 import "dotenv/config";
 import {
+  addDays,
   endOfMonth,
   endOfWeek,
   format,
@@ -112,21 +113,28 @@ function splitMarkdownByDate(filename, raw) {
   const parsed = matter(raw);
   const frontmatterDate = dateFromFrontmatter(filename, parsed.data);
   const lines = parsed.content.split(/\r?\n/);
-  const dateHeadingIndexes = [];
+  const dayHeadingIndexes = [];
+  const startDate = frontmatterDate || dateFromFilename(filename) || format(new Date(), "yyyy-MM-dd");
 
   lines.forEach((line, index) => {
-    const match = line.match(/^\s{0,3}#{1,6}\s+.*?(\d{4}-\d{2}-\d{2}).*$/);
-    if (match && validateDate(match[1])) {
-      dateHeadingIndexes.push({ index, date: match[1], title: line.replace(/^#+\s*/, "").trim() });
+    const match = line.match(/^\s{0,3}###\s+(.+?)\s*$/);
+    if (match) {
+      const dateInTitle = validateDate(match[1].match(/(\d{4}-\d{2}-\d{2})/)?.[1]);
+      dayHeadingIndexes.push({
+        index,
+        date: dateInTitle,
+        title: match[1].trim()
+      });
     }
   });
 
-  if (dateHeadingIndexes.length) {
-    return dateHeadingIndexes.map((item, index) => {
-      const next = dateHeadingIndexes[index + 1]?.index ?? lines.length;
+  if (dayHeadingIndexes.length) {
+    return dayHeadingIndexes.map((item, index) => {
+      const next = dayHeadingIndexes[index + 1]?.index ?? lines.length;
+      const date = item.date || format(addDays(parseISO(startDate), index), "yyyy-MM-dd");
       return {
-        date: item.date,
-        title: item.title || `${filename} ${item.date}`,
+        date,
+        title: item.title || `${filename} ${date}`,
         content: lines.slice(item.index, next).join("\n").trim()
       };
     });
@@ -146,9 +154,10 @@ function parseTasks(content, documentId, dayNoteId, date) {
   return content
     .split(/\r?\n/)
     .map((line, index) => {
-      const match = line.match(/^\s*[-*+]\s+\[( |x|X)\]\s+(.+?)\s*$/);
-      if (!match) return null;
-      const text = match[2].trim();
+      const checkboxMatch = line.match(/^\s*[-*+]\s+\[( |x|X)\]\s+(.+?)\s*$/);
+      const subheadingMatch = line.match(/^\s{0,3}#{4,6}\s+(.+?)\s*$/);
+      if (!checkboxMatch && !subheadingMatch) return null;
+      const text = (checkboxMatch?.[2] || subheadingMatch?.[1] || "").trim();
       return {
         id: hashText(`${documentId}:${dayNoteId}:${date}:${index + 1}:${text}`),
         documentId,
@@ -156,7 +165,7 @@ function parseTasks(content, documentId, dayNoteId, date) {
         date,
         line: index + 1,
         text,
-        completed: match[1].toLowerCase() === "x" ? 1 : 0
+        completed: checkboxMatch?.[1].toLowerCase() === "x" ? 1 : 0
       };
     })
     .filter(Boolean);

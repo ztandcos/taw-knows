@@ -39,7 +39,30 @@ http://127.0.0.1:4317/
 
 The recommended flow is uploading `.md` files from the page. Uploaded content is stored in SQLite, so the original file does not need to stay in place.
 
-Dates are detected from frontmatter first:
+Recommended Markdown structure:
+
+```md
+### 2026-06-01
+
+#### Read papers
+#### Organize experiment notes
+#### Draft the daily summary
+
+### 2026-06-02
+
+#### Review yesterday's blockers
+#### Continue implementation
+```
+
+Import rules:
+
+- Each level-3 heading, `###`, is treated as one day.
+- Child heading lines, `####`, `#####`, and `######`, become tasks.
+- Markdown checkbox tasks, `- [ ]` and `- [x]`, are still supported.
+- If a `###` heading includes `YYYY-MM-DD`, that date is used.
+- If a `###` heading has no date, dates are assigned from the upload day onward in heading order.
+
+If there are no level-3 headings, the app falls back to frontmatter:
 
 ```md
 ---
