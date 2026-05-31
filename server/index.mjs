@@ -616,21 +616,32 @@ app.delete("/api/documents/:id", (req, res) => {
     db.prepare("delete from tasks where document_id = ?").run(id);
     db.prepare("delete from day_notes where document_id = ?").run(id);
     db.prepare("delete from imported_documents where id = ?").run(id);
+    // Clean up summaries for dates that no longer have any day_notes
     for (const date of dates) {
       const hasOtherNotes = db.prepare("select 1 from day_notes where date = ? limit 1").get(date);
       if (!hasOtherNotes) {
         db.prepare("delete from daily_summaries where date = ?").run(date);
       }
     }
-    const scopeStarts = db.prepare(
-      "select distinct scope_type, scope_start from chat_messages where scope_start in (select distinct date from day_notes)"
-    ).all();
-    for (const { scope_type, scope_start } of scopeStarts) {
-      const corpus = buildCorpus(scope_type, scope_start);
-      if (!corpus.tasks.length && !corpus.summaries.length) {
-        db.prepare("delete from chat_messages where scope_type = ? and scope_start = ?").run(scope_type, scope_start);
-      }
-    }
+    // Also clean up any orphaned summaries (dates with no remaining day_notes at all)
+    db.prepare(
+      "delete from daily_summaries where date not in (select distinct date from day_notes)"
+    ).run();
+    // Clean up chat messages for empty scopes
+    db.prepare(
+      "delete from chat_messages where scope_start not in (select distinct date from day_notes)"
+    ).run();
+  })();
+  res.json({ ok: true });
+});
+
+app.delete("/api/data/all", (_req, res) => {
+  db.transaction(() => {
+    db.prepare("delete from tasks").run();
+    db.prepare("delete from day_notes").run();
+    db.prepare("delete from daily_summaries").run();
+    db.prepare("delete from chat_messages").run();
+    db.prepare("delete from imported_documents").run();
   })();
   res.json({ ok: true });
 });

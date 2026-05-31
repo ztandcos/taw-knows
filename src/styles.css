@@ -482,6 +482,11 @@ h3 {
   color: var(--color-danger);
 }
 
+.clearAllBtn {
+  width: 100%;
+  justify-content: center;
+}
+
 .primary {
   padding: 0 14px;
   background: var(--color-primary);

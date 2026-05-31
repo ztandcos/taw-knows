@@ -378,6 +378,28 @@ function App() {
     }
   }
 
+  async function clearAllData() {
+    const confirmed = window.confirm("清空所有数据？这会删除全部导入文件、任务、总结和对话记录，不可恢复。");
+    if (!confirmed) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await api("/api/data/all", { method: "DELETE" });
+      setDay(null);
+      setDocuments([]);
+      setSelectedDocumentId(null);
+      setPreview(null);
+      setDates([]);
+      setProgress({ total: 0, completed: 0, percent: 0, streak: 0 });
+      setNotice("所有数据已清空。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "清空失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function toggleTask(task: Task) {
     setError("");
     const previous = day;
@@ -732,6 +754,10 @@ function App() {
                 <p>还没有导入文件。</p>
               )}
             </div>
+
+            <button className="iconText dangerText clearAllBtn" onClick={clearAllData}>
+              <Trash2 size={15} /> 清空所有数据
+            </button>
 
             <div className="dateBox">
               <label htmlFor="date">选择日期</label>
