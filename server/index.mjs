@@ -210,7 +210,6 @@ function parseTasks(content, documentId, dayNoteId, date) {
 async function importMarkdown(filename, content) {
   const hash = hashText(content);
   const existing = db.prepare("select id from imported_documents where content_hash = ?").get(hash);
-  if (existing) return { documentId: existing.id, duplicate: true, days: [] };
 
   const insertDocument = db.prepare("insert into imported_documents (filename, content, content_hash) values (?, ?, ?)");
   const insertDay = db.prepare("insert into day_notes (document_id, date, title, content) values (?, ?, ?, ?)");
@@ -239,9 +238,20 @@ async function importMarkdown(filename, content) {
   } else {
     parsedDays = splitMarkdownByDate(filename, content);
   }
+  const rewrittenContent = llmUsed && parsedDays.length
+    ? parsedDays.map((day) => day.content).filter(Boolean).join("\n\n")
+    : content;
 
   return db.transaction(() => {
-    const documentId = Number(insertDocument.run(filename, content, hash).lastInsertRowid);
+    const documentId = existing
+      ? Number(existing.id)
+      : Number(insertDocument.run(filename, rewrittenContent, hash).lastInsertRowid);
+    if (existing) {
+      db.prepare("delete from tasks where document_id = ?").run(documentId);
+      db.prepare("delete from day_notes where document_id = ?").run(documentId);
+      db.prepare("update imported_documents set filename = ?, content = ?, imported_at = datetime('now') where id = ?")
+        .run(filename, rewrittenContent, documentId);
+    }
     const days = parsedDays.map((day) => {
       const dayNoteId = Number(insertDay.run(documentId, day.date, day.title, day.content).lastInsertRowid);
       let tasks;
@@ -261,7 +271,7 @@ async function importMarkdown(filename, content) {
       tasks.forEach((task) => insertTask.run(task));
       return { date: day.date, title: day.title, id: dayNoteId, taskCount: tasks.length };
     });
-    return { documentId, duplicate: false, days, llmUsed };
+    return { documentId, duplicate: Boolean(existing), refreshed: Boolean(existing), days, llmUsed };
   })();
 }
 

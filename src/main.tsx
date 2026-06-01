@@ -361,15 +361,15 @@ function App() {
     setNotice("");
     try {
       const content = await file.text();
-      const payload = await api<{ documentId: number; duplicate: boolean; days: Array<{ date: string; taskCount: number }>; llmUsed?: boolean }>("/api/import", {
+      const payload = await api<{ documentId: number; duplicate: boolean; refreshed?: boolean; days: Array<{ date: string; taskCount: number }>; llmUsed?: boolean }>("/api/import", {
         method: "POST",
         body: JSON.stringify({ filename: file.name, content })
       });
       const firstDate = payload.days[0]?.date;
       if (firstDate) setDate(firstDate);
       setSelectedDocumentId(payload.documentId);
-      const method = payload.llmUsed ? "AI 智能解析" : "正则解析";
-      setNotice(payload.duplicate ? "这个 Markdown 文件已经导入过。" : `导入完成（${method}）：切分 ${payload.days.length} 天。`);
+      const method = payload.llmUsed ? "AI 改写" : "本地解析";
+      setNotice(payload.refreshed ? `已重新处理并覆盖旧预览（${method}）：切分 ${payload.days.length} 天。` : `导入完成（${method}）：切分 ${payload.days.length} 天。`);
       await refreshBase(firstDate || date);
       await refreshPreview(payload.documentId);
       setView("preview");
