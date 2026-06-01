@@ -203,12 +203,35 @@ function shiftDate(date: string, days: number) {
   return formatDateLocal(next);
 }
 
+function dateFromKey(date: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatKnowledgeDate(date: string) {
+  const current = dateFromKey(date);
+  return `${current.getMonth() + 1}月${current.getDate()}日`;
+}
+
+function formatKnowledgeDateWithWeekday(date: string) {
+  const current = dateFromKey(date);
+  const weekday = new Intl.DateTimeFormat("zh-CN", { weekday: "short" }).format(current);
+  return `${formatKnowledgeDate(date)} · ${weekday}`;
+}
+
+function formatTimestamp(value: string) {
+  const normalized = value.includes("T") ? value : value.replace(" ", "T");
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return `${parsed.getMonth() + 1}月${parsed.getDate()}日 ${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`;
+}
+
 function scopeFromView(view: View): Scope {
   return view === "month" ? "month" : "week";
 }
 
 function rangeTitle(scope: Scope, date: string) {
-  const current = new Date(`${date}T00:00:00`);
+  const current = dateFromKey(date);
   const month = current.getMonth() + 1;
   if (scope === "month") return `${month}月`;
 
@@ -761,6 +784,10 @@ function App() {
 
             <div className="dateBox">
               <label htmlFor="date">选择日期</label>
+              <div className="dateDisplay">
+                <strong>{formatKnowledgeDateWithWeekday(date)}</strong>
+                <span>{date}</span>
+              </div>
               <div className="dateControls">
                 <button aria-label="前一天" onClick={() => setDate(shiftDate(date, -1))}>
                   <ChevronLeft size={18} />
@@ -775,14 +802,14 @@ function App() {
             <div className="knownDates">
               <h2>已导入日期</h2>
               <button className="dateToggle" onClick={() => setDatesOpen((open) => !open)}>
-                {dates.length ? `${date} · ${dates.length} 天` : "还没有导入日期"}
+                {dates.length ? `${formatKnowledgeDateWithWeekday(date)} · ${dates.length} 天` : "还没有导入日期"}
               </button>
               {datesOpen && (
                 <div className="dateList">
                   {dates.length ? (
                     dates.map((item) => (
                       <button key={item} className={item === date ? "current" : ""} onClick={() => setDate(item)}>
-                        {item}
+                        {formatKnowledgeDate(item)}
                       </button>
                     ))
                   ) : (
@@ -938,7 +965,7 @@ function DayView(props: {
         <div className="panelHeader">
           <div>
             <p className="eyebrow">Daily board</p>
-            <h2>{date}</h2>
+            <h2 className="dateTitle">{formatKnowledgeDateWithWeekday(date)}</h2>
           </div>
           <button className="iconText" onClick={refresh}>
             <RefreshCw size={16} /> 刷新
@@ -1008,7 +1035,7 @@ function DayView(props: {
           <div className="summaryHistory">
             {(day?.summaries || []).map((summary) => (
               <article key={summary.id}>
-                <time>{summary.createdAt}</time>
+                <time>{formatTimestamp(summary.createdAt)}</time>
                 <p>{summary.content}</p>
               </article>
             ))}
@@ -1043,7 +1070,7 @@ function PreviewView(props: {
             {preview.days.map((day) => (
               <article key={day.id} className="previewDay">
                 <header>
-                  <span>{day.date}</span>
+                  <span>{formatKnowledgeDateWithWeekday(day.date)}</span>
                   <strong>{day.title}</strong>
                 </header>
                 <div className="markdown readableMarkdown" dangerouslySetInnerHTML={{ __html: day.html }} />

@@ -1,14 +1,18 @@
 :root {
-  --color-primary: #2e7a6e;
-  --color-body: #f2f1ea;
-  --color-light: #f8f7f2;
-  --color-panel: #fffef8;
-  --color-border: #e2e0d6;
-  --color-text: #57615a;
-  --color-text-dark: #151613;
-  --color-text-light: #868f88;
-  --color-muted-surface: #ebe9df;
-  --color-input: #fffdf8;
+  --color-primary: #2f766b;
+  --color-primary-strong: #235f56;
+  --color-body: #f5f4ef;
+  --color-body-top: #faf9f3;
+  --color-light: #faf9f5;
+  --color-panel: #fffefa;
+  --color-border: #dedbd0;
+  --color-text: #56615c;
+  --color-text-dark: #171a18;
+  --color-text-light: #7f8983;
+  --color-muted-surface: #ece9df;
+  --color-input: #fffefa;
+  --color-accent: #c86f4a;
+  --color-panel-soft: #f1efe7;
   --color-danger: #9a4b42;
   --color-warning: #9a7b2f;
   --color-success-soft: #eef4ef;
@@ -16,8 +20,11 @@
   --color-error-text: #a23d2f;
   --color-error-border: #f1c5bd;
   --shadow-panel: 0 12px 30px rgba(21, 22, 19, 0.06);
-  font-family:
-    "LXGW WenKai", "STKaiti", "KaiTi", "Kaiti SC", "Songti SC", serif;
+  --shadow-menu: 0 18px 44px rgba(42, 37, 26, 0.11);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
+  --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-reading: "LXGW WenKai", "STKaiti", "KaiTi", "Kaiti SC", "Songti SC", serif;
+  font-family: var(--font-reading);
   color: var(--color-text-dark);
   background: var(--color-body);
   font-synthesis: none;
@@ -25,16 +32,20 @@
 }
 
 html[data-theme="dark"] {
-  --color-primary: #69cbbb;
-  --color-body: #111512;
-  --color-light: #181f1b;
-  --color-panel: #202820;
-  --color-border: #334039;
-  --color-text: #c5d0c8;
-  --color-text-dark: #f1f1ec;
-  --color-text-light: #89968f;
-  --color-muted-surface: #28322d;
-  --color-input: #151b17;
+  --color-primary: #74d5c5;
+  --color-primary-strong: #9fe7dc;
+  --color-body: #101412;
+  --color-body-top: #151b18;
+  --color-light: #171d1a;
+  --color-panel: #202721;
+  --color-border: #34413a;
+  --color-text: #c2ccc5;
+  --color-text-dark: #f2f2ed;
+  --color-text-light: #95a199;
+  --color-muted-surface: #29342e;
+  --color-input: #141a17;
+  --color-accent: #f0a06f;
+  --color-panel-soft: #1a211d;
   --color-danger: #e19a8f;
   --color-warning: #d7bd73;
   --color-success-soft: #1c2d27;
@@ -42,6 +53,8 @@ html[data-theme="dark"] {
   --color-error-text: #ffc4bc;
   --color-error-border: #70413b;
   --shadow-panel: 0 18px 38px rgba(0, 0, 0, 0.28);
+  --shadow-menu: 0 20px 48px rgba(0, 0, 0, 0.34);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-primary) 24%, transparent);
 }
 
 * {
@@ -50,33 +63,50 @@ html[data-theme="dark"] {
 
 body {
   margin: 0;
-  background: var(--color-body);
+  background:
+    linear-gradient(180deg, var(--color-body-top) 0%, var(--color-body) 46%),
+    var(--color-body);
 }
 
 button,
 input,
 select,
 textarea {
-  font: inherit;
+  font-family: var(--font-ui);
 }
 
 button {
   border: 0;
   cursor: pointer;
   white-space: nowrap;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: 340px minmax(0, 1fr);
 }
 
 .sidebar {
-  background: var(--color-light);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-light) 92%, var(--color-panel)) 0%, var(--color-light) 100%);
   color: var(--color-text-dark);
   border-right: 1px solid var(--color-border);
-  padding: 24px;
+  padding: 26px 22px;
   display: flex;
   flex-direction: column;
   gap: 22px;
@@ -90,7 +120,10 @@ button {
 
 .brand h1 {
   margin: 0;
+  font-family: var(--font-ui);
   font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 
 .brand p,
@@ -108,7 +141,8 @@ button {
   gap: 6px;
   padding: 5px;
   background: var(--color-muted-surface);
-  border-radius: 8px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
 }
 
 .segmented.three {
@@ -126,11 +160,13 @@ button {
 .primary,
 .chatInput button {
   min-height: 38px;
-  border-radius: 7px;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .segmented button {
@@ -142,21 +178,27 @@ button {
 .dateList button.current {
   background: var(--color-primary);
   color: #ffffff;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--color-primary) 22%, transparent);
 }
 
 .dateBox label,
 .knownDates h2,
 .documentList h2 {
   display: block;
-  margin-bottom: 8px;
-  font-size: 13px;
+  margin-bottom: 9px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
   color: var(--color-text-dark);
+  text-transform: uppercase;
+  letter-spacing: 0;
 }
 
 .dateControls {
   display: grid;
   grid-template-columns: 38px 1fr 38px;
   gap: 8px;
+  margin-top: 9px;
 }
 
 .dateControls button,
@@ -169,6 +211,36 @@ button {
 
 .dateControls input {
   padding: 0 10px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.dateDisplay {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 20%, var(--color-border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--color-primary) 7%, var(--color-panel));
+}
+
+.dateDisplay strong {
+  color: var(--color-text-dark);
+  font-family: var(--font-reading);
+  font-size: 20px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dateDisplay span {
+  color: var(--color-text-light);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .dateList {
@@ -182,6 +254,7 @@ button {
   background: var(--color-panel);
   color: var(--color-text);
   border: 1px solid var(--color-border);
+  font-size: 13px;
 }
 
 .dateToggle {
@@ -193,6 +266,7 @@ button {
   background: var(--color-panel);
   color: var(--color-text-dark);
   text-align: left;
+  justify-content: flex-start;
 }
 
 .documentList {
@@ -215,7 +289,7 @@ button {
 
 .documentOpen,
 .deleteButton {
-  min-height: 42px;
+  min-height: 40px;
   border-radius: 7px;
   border: 1px solid var(--color-border);
   background: var(--color-panel);
@@ -240,14 +314,20 @@ button {
 
 .documentOpen span {
   color: var(--color-text-dark);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .documentOpen small {
   color: var(--color-text-light);
+  font-family: var(--font-ui);
+  font-size: 12px;
 }
 
 .documentRow.current .documentOpen {
   border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 7%, var(--color-panel));
 }
 
 .deleteButton {
@@ -276,7 +356,8 @@ button {
   padding: 14px;
   background: var(--color-panel);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: 12px;
+  box-shadow: var(--shadow-panel);
 }
 
 .stickyProgress div:first-child {
@@ -284,6 +365,8 @@ button {
   justify-content: space-between;
   gap: 12px;
   color: var(--color-text-dark);
+  font-family: var(--font-ui);
+  font-size: 14px;
 }
 
 .stickyProgress p {
@@ -293,7 +376,7 @@ button {
 }
 
 .uploadBox {
-  min-height: 46px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -303,6 +386,10 @@ button {
   color: #ffffff;
   border-radius: 8px;
   cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--color-primary) 20%, transparent);
 }
 
 .uploadBox input {
@@ -324,11 +411,19 @@ button {
   width: 100%;
   padding: 0 14px;
   border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-panel);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--color-panel) 94%, var(--color-primary));
   color: var(--color-text-dark);
   cursor: pointer;
   list-style: none;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.functionMenu[open] summary {
+  border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-border));
+  color: var(--color-primary-strong);
 }
 
 .functionMenu summary::-webkit-details-marker {
@@ -337,13 +432,29 @@ button {
 
 .menuBody {
   display: grid;
-  gap: 14px;
-  margin-top: 12px;
-  padding: 14px;
+  gap: 10px;
+  margin-top: 9px;
+  padding: 10px;
   border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-light);
-  box-shadow: var(--shadow-panel);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-light) 82%, var(--color-panel));
+  box-shadow: var(--shadow-menu);
+}
+
+.menuBody > .documentList,
+.menuBody > .dateBox,
+.menuBody > .knownDates,
+.menuBody > .llmStatus {
+  padding: 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-panel) 92%, var(--color-light));
+}
+
+.menuBody > .themeSwitch,
+.menuBody > .uploadBox,
+.menuBody > .clearAllBtn {
+  align-self: start;
 }
 
 .themeSwitch {
@@ -351,19 +462,21 @@ button {
   grid-template-columns: 1fr 1fr;
   gap: 6px;
   padding: 5px;
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--color-muted-surface);
 }
 
 .themeSwitch button {
-  min-height: 36px;
+  min-height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
-  border-radius: 7px;
+  border-radius: 8px;
   background: transparent;
   color: var(--color-text);
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .themeSwitch button.active {
@@ -373,40 +486,42 @@ button {
 
 .llmStatus {
   display: grid;
-  gap: 8px;
-  padding: 12px;
-  border-radius: 8px;
-  background: var(--color-panel);
-  border: 1px solid var(--color-border);
+  gap: 9px;
 }
 
-.llmStatus > div {
+.llmStatus > div:not(.llmForm) {
   display: flex;
   align-items: center;
   gap: 7px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .llmStatus p {
   margin: 0;
   color: var(--color-text-light);
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.55;
   overflow-wrap: anywhere;
 }
 
 .llmForm {
   display: grid;
-  gap: 7px;
+  grid-template-columns: 1fr;
+  gap: 8px;
 }
 
 .llmForm input,
 .llmForm select {
   width: 100%;
-  min-height: 36px;
+  min-height: 34px;
   border: 1px solid var(--color-border);
   border-radius: 7px;
   background: var(--color-input);
   color: var(--color-text-dark);
   padding: 0 10px;
+  font-size: 13px;
 }
 
 .llmStatus.ok > div {
@@ -418,7 +533,7 @@ button {
 }
 
 .content {
-  padding: 28px;
+  padding: 32px;
   min-width: 0;
 }
 
@@ -439,8 +554,8 @@ button {
 .chatPanel {
   background: var(--color-panel);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 22px;
+  border-radius: 14px;
+  padding: 24px;
   box-shadow: var(--shadow-panel);
 }
 
@@ -455,6 +570,8 @@ button {
 .eyebrow {
   color: var(--color-primary);
   font-size: 12px;
+  font-family: var(--font-ui);
+  font-weight: 700;
   margin: 0 0 5px;
   text-transform: uppercase;
 }
@@ -465,7 +582,12 @@ h3 {
 }
 
 h2 {
-  font-size: 28px;
+  font-size: 27px;
+  letter-spacing: 0;
+}
+
+.dateTitle {
+  font-size: 31px;
 }
 
 h3 {
@@ -474,8 +596,9 @@ h3 {
 
 .iconText {
   padding: 0 12px;
-  background: var(--color-muted-surface);
+  background: color-mix(in srgb, var(--color-muted-surface) 86%, var(--color-panel));
   color: var(--color-text-dark);
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
 }
 
 .dangerText {
@@ -491,6 +614,7 @@ h3 {
   padding: 0 14px;
   background: var(--color-primary);
   color: white;
+  box-shadow: 0 9px 18px color-mix(in srgb, var(--color-primary) 19%, transparent);
 }
 
 .primary:disabled,
@@ -502,7 +626,7 @@ textarea:disabled {
 }
 
 .progressLine {
-  height: 9px;
+  height: 8px;
   background: var(--color-muted-surface);
   border-radius: 999px;
   overflow: hidden;
@@ -511,7 +635,7 @@ textarea:disabled {
 .progressLine span {
   display: block;
   height: 100%;
-  background: var(--color-primary);
+  background: linear-gradient(90deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 68%, var(--color-accent)));
 }
 
 .taskList,
@@ -536,17 +660,23 @@ textarea:disabled {
   background: var(--color-input);
   color: var(--color-text-dark);
   padding: 0 12px;
+  font-size: 14px;
 }
 
 .taskRow {
   display: grid;
   grid-template-columns: 26px 1fr 28px;
   gap: 10px;
-  padding: 12px;
-  background: var(--color-light);
+  padding: 12px 13px;
+  background: var(--color-panel-soft);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: 10px;
   align-items: center;
+}
+
+.taskRow:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 34%, var(--color-border));
+  background: color-mix(in srgb, var(--color-panel-soft) 88%, var(--color-panel));
 }
 
 .taskToggle {
@@ -607,8 +737,9 @@ textarea:disabled {
 
 .emptyState {
   padding: 18px;
-  background: var(--color-light);
-  border-radius: 8px;
+  background: var(--color-panel-soft);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
   color: var(--color-text);
 }
 
@@ -623,9 +754,9 @@ textarea:disabled {
 
 .previewDay {
   padding: 18px;
-  background: var(--color-light);
+  background: var(--color-panel-soft);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .previewDay header {
@@ -707,18 +838,20 @@ textarea {
   min-height: 150px;
   resize: vertical;
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 12px;
   margin: 16px 0 12px;
   background: var(--color-input);
   color: var(--color-text-dark);
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .summaryHistory article,
 .message {
   padding: 12px;
-  border-radius: 8px;
-  background: var(--color-light);
+  border-radius: 10px;
+  background: var(--color-panel-soft);
   border: 1px solid var(--color-border);
   white-space: pre-wrap;
 }
@@ -728,9 +861,9 @@ textarea {
   white-space: pre-wrap;
   line-height: 1.65;
   margin: 0;
-  background: var(--color-light);
+  background: var(--color-panel-soft);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 16px;
   color: var(--color-text-dark);
 }
@@ -818,7 +951,7 @@ textarea {
 .quickCapturePanel {
   background: var(--color-panel);
   border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: 14px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
   width: min(520px, 90vw);
   padding: 20px;
@@ -891,9 +1024,9 @@ textarea {
 
 .weeklyRendered {
   min-height: 460px;
-  background: var(--color-light);
+  background: var(--color-panel-soft);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 16px;
 }
 
@@ -925,5 +1058,41 @@ textarea {
   .summaryPanel,
   .chatPanel {
     position: static;
+  }
+}
+
+@media (min-width: 760px) and (max-width: 980px) {
+  .menuBody {
+    grid-template-columns: minmax(240px, 0.78fr) minmax(320px, 1.22fr);
+    align-items: start;
+  }
+
+  .themeSwitch,
+  .uploadBox,
+  .documentList,
+  .clearAllBtn {
+    grid-column: 1;
+  }
+
+  .dateBox,
+  .knownDates,
+  .llmStatus {
+    grid-column: 2;
+  }
+
+  .dateBox {
+    grid-row: 1;
+  }
+
+  .knownDates {
+    grid-row: 2 / span 2;
+  }
+
+  .llmStatus {
+    grid-row: 4 / span 3;
+  }
+
+  .llmForm {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
