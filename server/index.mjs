@@ -22,19 +22,21 @@ const app = express();
 const markdown = new MarkdownIt({ html: false, linkify: true, typographer: true });
 
 const LLM_PARSE_SYSTEM_PROMPT = [
-  "你是一个 Markdown 日记/任务文件解析器。用户会给你一段 Markdown 文本，你需要：",
-  "1. 识别其中按日期分组的结构。常见的日期标识包括：",
-  '   - 标题中包含日期，如 "### Day 2026-06-01"、"## 6月1日"、"# 2026/06/01"',
-  '   - 标题中包含"第X天"、"Day X"等相对日期描述',
-  "   - frontmatter 中的 date 字段",
-  "   - 文件名中的日期",
-  "2. 提取每天的任务项，包括：",
-  "   - checkbox 任务：- [ ] 未完成，- [x] 已完成",
-  "   - 子标题（####、#####、######）作为任务项",
-  "   - 其他有明确动作描述的条目",
-  "3. 如果无法识别按日期分组的结构，将全部内容归为一天。",
+  "你是一个 Markdown 学习记录整理助手。用户会上传一份 Markdown，你需要基于原文改写成更适合人类使用的任务清单 Markdown。",
+  "核心目标：先改写 Markdown，再从改写后的 Markdown 中提取任务。",
+  "规则：",
+  "1. 只把 `### Day ...` 三级标题识别为一天。普通三级标题、二级标题、一级标题都不要作为任务日期分组。",
+  "2. 对每一天，保留 `### Day ...` 标题，并将该天内容改写为清晰的 Markdown 清单。",
+  "3. 原文里零散的命令、函数名、SQL 关键字、概念标题，不要机械保留。要改写为可执行、上下文清楚、符合人类任务清单习惯的任务。",
+  "4. 相邻且属于同一主题的碎片任务必须主动合并。合并后的任务完成状态：只有来源任务全部完成时才 completed=true，否则 completed=false。",
+  "5. 改写后的每条任务必须同时出现在 `tasks` 数组里，也必须出现在该天 `content` 的 Markdown 中。",
+  "6. `content` 中任务统一写成 checkbox：`- [ ] 任务` 或 `- [x] 任务`，不要再用碎片化子标题当任务。",
+  "7. 任务文字尽量使用中文，简洁但要说明对象、模块或目的。",
+  "8. 示例：`create database`、`create table`、`insert`、`select` 应合并为 `练习 MySQL 的建库、建表、数据插入和查询流程`。",
+  "9. 示例：`useEffect`、`useMemo`、`useCallback` 可合并为 `梳理 React 常用 Hooks 的使用场景和差异`。",
+  "10. 如果没有 `### Day ...` 标题，返回空 days 数组，不要自行创造日期分组。",
   "你必须只返回一个 JSON 对象，不要返回任何其他文字、不要使用 markdown code fence。格式如下：",
-  '{"days":[{"date":"YYYY-MM-DD","title":"标题","tasks":[{"text":"任务描述","completed":false}]}]}'
+  '{"days":[{"date":"YYYY-MM-DD","title":"Day 标题","content":"### Day YYYY-MM-DD\\n\\n- [ ] 改写后的任务","tasks":[{"text":"改写后的任务","completed":false}]}]}'
 ].join("\n");
 const rootDir = process.cwd();
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(rootDir, "data"));
@@ -462,12 +464,17 @@ async function callLlmForParse(filename, content) {
   return parsed.days.map((day, index) => ({
     date: validateDate(day.date) || format(addDays(parseISO(fallbackDate), index), "yyyy-MM-dd"),
     title: String(day.title || `Day ${index + 1}`),
-    content: String(day.content || ""),
+    content: String(day.content || "").trim(),
     tasks: Array.isArray(day.tasks)
       ? day.tasks
           .map((t) => ({ text: String(t.text || "").trim(), completed: Boolean(t.completed) }))
           .filter((t) => t.text)
       : []
+  })).map((day) => ({
+    ...day,
+    content:
+      day.content ||
+      [`### ${day.title}`, "", ...day.tasks.map((task) => `${task.completed ? "- [x]" : "- [ ]"} ${task.text}`)].join("\n")
   }));
 }
 

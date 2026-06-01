@@ -57,7 +57,9 @@ Recommended Markdown structure:
 Import rules:
 
 - Only level-3 headings starting with `### Day` are treated as days.
-- Child heading lines under `### Day`, `####`, `#####`, and `######`, become tasks.
+- If the in-page LLM configuration has passed the check, import first asks the AI to rewrite the uploaded Markdown into a clearer human task checklist, then stores that rewritten Markdown preview and its tasks.
+- The AI may merge fragmented commands, headings, or concepts into better task items. For example, `create database`, `create table`, `insert`, and `select` can become "Practice the MySQL database creation, table creation, data insertion, and query workflow".
+- Without an available LLM, the local parser is used: child heading lines under `### Day`, `####`, `#####`, and `######`, become tasks.
 - Ordinary level-3 headings do not create tasks.
 - Markdown checkbox tasks, `- [ ]` and `- [x]`, are still supported.
 - If a `### Day` heading includes `YYYY-MM-DD`, that date is used.
