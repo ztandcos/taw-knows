@@ -825,6 +825,14 @@ app.delete(/^\/api\/(week|month)\/([^/]+)\/messages$/, (req, res) => {
   res.json({ ok: true, scope, scopeStart: start, messages: [] });
 });
 
+app.delete("/api/messages/:id", (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid message id" });
+  const info = db.prepare("delete from chat_messages where id = ?").run(id);
+  if (!info.changes) return res.status(404).json({ error: "Message not found" });
+  res.json({ ok: true });
+});
+
 app.post(/^\/api\/(week|month)\/([^/]+)\/chat$/, async (req, res) => {
   const scope = req.params[0];
   const date = validateDate(req.params[1]);

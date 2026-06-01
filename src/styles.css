@@ -549,6 +549,12 @@ summary:focus-visible {
   align-items: start;
 }
 
+.rangeStack {
+  max-width: 1040px;
+  display: grid;
+  gap: 22px;
+}
+
 .mainPanel,
 .summaryPanel,
 .chatPanel {
@@ -864,6 +870,11 @@ textarea {
   white-space: pre-wrap;
 }
 
+.rangeChatPanel {
+  position: relative;
+  top: auto;
+}
+
 .weeklyText {
   min-height: 460px;
   white-space: pre-wrap;
@@ -903,11 +914,66 @@ textarea {
   font-size: 13px;
 }
 
-.message span {
-  display: block;
+.messageHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.messageHeader span {
+  flex: 1;
   color: var(--color-primary);
   font-size: 12px;
-  margin-bottom: 4px;
+  margin: 0;
+}
+
+.messageDelete {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-text-light);
+  opacity: 0;
+}
+
+.message:hover .messageDelete,
+.message:focus-within .messageDelete {
+  opacity: 1;
+}
+
+.messageDelete:hover:not(:disabled) {
+  background: var(--color-error-bg);
+  color: var(--color-danger);
+}
+
+.messageContextMenu {
+  position: fixed;
+  z-index: 200;
+  min-width: 148px;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-panel);
+  box-shadow: var(--shadow-menu);
+}
+
+.messageContextMenu button {
+  width: 100%;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-danger);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .message.user {

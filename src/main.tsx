@@ -652,6 +652,20 @@ function App() {
     }
   }
 
+  async function deleteRangeMessage(messageId: number) {
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/messages/${messageId}`, { method: "DELETE" });
+      setMessages((current) => current.filter((message) => message.id !== messageId));
+      setNotice("已删除单条对话记录。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除对话失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function sendChat() {
     if (!chatDraft.trim()) return;
     const scope = scopeFromView(view);
@@ -934,6 +948,7 @@ function App() {
             generateRange={generateRange}
             clearRangeSummary={() => setRangeSummary("")}
             clearRangeMessages={clearRangeMessages}
+            deleteRangeMessage={deleteRangeMessage}
             sendChat={sendChat}
             busy={busy}
             aiDisabled={aiDisabled}
@@ -1117,6 +1132,7 @@ function RangeView(props: {
   generateRange: () => void;
   clearRangeSummary: () => void;
   clearRangeMessages: () => void;
+  deleteRangeMessage: (messageId: number) => Promise<void>;
   sendChat: () => void;
   busy: boolean;
   aiDisabled: boolean;
@@ -1131,6 +1147,7 @@ function RangeView(props: {
     generateRange,
     clearRangeSummary,
     clearRangeMessages,
+    deleteRangeMessage,
     sendChat,
     busy,
     aiDisabled
@@ -1138,9 +1155,83 @@ function RangeView(props: {
   const label = scope === "month" ? "月总结" : "周总结";
   const title = rangeTitle(scope, date);
   const summaryHtml = useMemo(() => (summary ? md.render(summary) : ""), [summary]);
+  const [contextMenu, setContextMenu] = useState<{ id: number; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    function closeMenu() {
+      setContextMenu(null);
+    }
+    window.addEventListener("click", closeMenu);
+    window.addEventListener("keydown", closeMenu);
+    return () => {
+      window.removeEventListener("click", closeMenu);
+      window.removeEventListener("keydown", closeMenu);
+    };
+  }, [contextMenu]);
+
+  async function removeMessage(messageId: number) {
+    setContextMenu(null);
+    await deleteRangeMessage(messageId);
+  }
 
   return (
-    <div className="weekGrid">
+    <div className="rangeStack">
+      <section className="chatPanel rangeChatPanel">
+        <div className="chatTitle">
+          <MessageSquareText size={18} />
+          <h3>{scope === "month" ? "本月语料对话" : "本周语料对话"}</h3>
+          <button className="iconText dangerText compactAction" onClick={clearRangeMessages} disabled={!messages.length || busy}>
+            <Trash2 size={14} /> 清空
+          </button>
+        </div>
+        <div className="messages">
+          {messages.length ? (
+            messages.map((message) => (
+              <article
+                key={message.id}
+                className={`message ${message.role}`}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  setContextMenu({ id: message.id, x: event.clientX, y: event.clientY });
+                }}
+              >
+                <header className="messageHeader">
+                  <span>{message.role === "user" ? "你" : "助手"}</span>
+                  <button className="messageDelete" aria-label="删除这条对话" onClick={() => removeMessage(message.id)} disabled={busy}>
+                    <Trash2 size={14} />
+                  </button>
+                </header>
+                <div dangerouslySetInnerHTML={{ __html: md.render(message.content) }} />
+              </article>
+            ))
+          ) : (
+            <div className="emptyState">还没有对话记录。</div>
+          )}
+        </div>
+        {contextMenu && (
+          <div className="messageContextMenu" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={(event) => event.stopPropagation()}>
+            <button onClick={() => removeMessage(contextMenu.id)} disabled={busy}>
+              <Trash2 size={14} /> 删除这条对话
+            </button>
+          </div>
+        )}
+        <div className="chatInput">
+          <textarea
+            value={chatDraft}
+            onChange={(event) => setChatDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendChat(); }
+            }}
+            placeholder={scope === "month" ? "围绕这个月的任务和小结提问..." : "围绕这一周的任务和小结提问..."}
+            disabled={aiDisabled}
+          />
+          <button aria-label="发送" onClick={sendChat} disabled={aiDisabled || !chatDraft.trim() || busy}>
+            <Send size={18} />
+          </button>
+        </div>
+      </section>
+
       <section className="mainPanel">
         <div className="panelHeader">
           <div>
@@ -1162,42 +1253,6 @@ function RangeView(props: {
           <div className="weeklyText emptyRange" />
         )}
       </section>
-
-      <aside className="chatPanel">
-        <div className="chatTitle">
-          <MessageSquareText size={18} />
-          <h3>{scope === "month" ? "本月语料对话" : "本周语料对话"}</h3>
-          <button className="iconText dangerText compactAction" onClick={clearRangeMessages} disabled={!messages.length || busy}>
-            <Trash2 size={14} /> 清空
-          </button>
-        </div>
-        <div className="messages">
-          {messages.length ? (
-            messages.map((message) => (
-              <article key={message.id} className={`message ${message.role}`}>
-                <span>{message.role === "user" ? "你" : "助手"}</span>
-                <div dangerouslySetInnerHTML={{ __html: md.render(message.content) }} />
-              </article>
-            ))
-          ) : (
-            <div className="emptyState">还没有对话记录。</div>
-          )}
-        </div>
-        <div className="chatInput">
-          <textarea
-            value={chatDraft}
-            onChange={(event) => setChatDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendChat(); }
-            }}
-            placeholder={scope === "month" ? "围绕这个月的任务和小结提问..." : "围绕这一周的任务和小结提问..."}
-            disabled={aiDisabled}
-          />
-          <button aria-label="发送" onClick={sendChat} disabled={aiDisabled || !chatDraft.trim() || busy}>
-            <Send size={18} />
-          </button>
-        </div>
-      </aside>
     </div>
   );
 }
