@@ -339,22 +339,6 @@ function buildCorpus(scope, date) {
   return { scope, start, end, tasks, summaries };
 }
 
-function localSummary(corpus) {
-  const label = corpus.scope === "month" ? "本月" : "本周";
-  const total = corpus.tasks.length;
-  const done = corpus.tasks.filter((task) => task.completed).length;
-  const openTasks = corpus.tasks.filter((task) => !task.completed).slice(0, 10).map((task) => `- ${task.text}`).join("\n");
-  const summaryText = corpus.summaries.map((item) => `${item.date}: ${item.content}`).join("\n");
-
-  return [
-    `${label}范围：${corpus.start} 至 ${corpus.end}`,
-    `任务概览：共 ${total} 项，已完成 ${done} 项，未完成 ${total - done} 项。`,
-    summaryText ? `每日小结语料：\n${summaryText}` : "每日小结语料：当前范围还没有保存小结。",
-    openTasks ? `待继续推进：\n${openTasks}` : "待继续推进：当前范围没有未完成任务。",
-    `${label}复盘建议：围绕重复出现的任务主题提炼知识点，再把它们改写成下次可以直接执行的步骤。`
-  ].join("\n\n");
-}
-
 function maskSecret(value) {
   if (!value) return "";
   if (value.length <= 8) return "********";
@@ -799,7 +783,7 @@ app.get(/^\/api\/(week|month)\/([^/]+)$/, (req, res) => {
   const date = validateDate(req.params[1]);
   if (!date) return res.status(400).json({ error: "Invalid date" });
   const corpus = buildCorpus(scope, date);
-  res.json({ ...corpus, generated: localSummary(corpus) });
+  res.json({ ...corpus, generated: "" });
 });
 
 app.post(/^\/api\/(week|month)\/([^/]+)\/summarize$/, async (req, res) => {
@@ -810,11 +794,13 @@ app.post(/^\/api\/(week|month)\/([^/]+)\/summarize$/, async (req, res) => {
   if (!hasLlmConfig()) return res.status(503).json({ error: "LLM is not configured" });
 
   const scopeLabel = scope === "month" ? "本月" : "本周";
+  const messages = messagesFor(scope, corpus.start);
   const prompt = [
-    `你是一个本地知识总结助手。只能基于用户${scopeLabel} Markdown 任务与每日小结作为个人语料，再结合常规知识进行提炼。`,
+    `你是一个本地知识总结助手。只能基于用户${scopeLabel}的当天总结和该范围内 AI 对话记录作为个人语料，再结合常规知识进行提炼。`,
     `${scopeLabel}范围：${corpus.start} 至 ${corpus.end}`,
-    `任务：${JSON.stringify(corpus.tasks, null, 2)}`,
-    `每日小结：${JSON.stringify(corpus.summaries, null, 2)}`,
+    `当天总结：${JSON.stringify(corpus.summaries, null, 2)}`,
+    `AI 对话记录：${JSON.stringify(messages, null, 2)}`,
+    "如果当天总结和对话记录都为空，请直接说明当前范围还没有可总结的语料，不要编造知识点。",
     "请输出：1. 知识点；2. 可复用方法；3. 下一阶段建议。"
   ].join("\n\n");
 
@@ -830,6 +816,15 @@ app.get(/^\/api\/(week|month)\/([^/]+)\/messages$/, (req, res) => {
   res.json({ scope, scopeStart: start, messages: messagesFor(scope, start) });
 });
 
+app.delete(/^\/api\/(week|month)\/([^/]+)\/messages$/, (req, res) => {
+  const scope = req.params[0];
+  const date = validateDate(req.params[1]);
+  if (!date) return res.status(400).json({ error: "Invalid date" });
+  const { start } = boundsFor(scope, date);
+  db.prepare("delete from chat_messages where scope_type = ? and scope_start = ?").run(scope, start);
+  res.json({ ok: true, scope, scopeStart: start, messages: [] });
+});
+
 app.post(/^\/api\/(week|month)\/([^/]+)\/chat$/, async (req, res) => {
   const scope = req.params[0];
   const date = validateDate(req.params[1]);
@@ -842,18 +837,18 @@ app.post(/^\/api\/(week|month)\/([^/]+)\/chat$/, async (req, res) => {
   const scopeLabel = scope === "month" ? "本月" : "本周";
   db.prepare("insert into chat_messages (week_start, scope_type, scope_start, role, content) values (?, ?, ?, 'user', ?)")
     .run(corpus.start, scope, corpus.start, content);
+  const messages = messagesFor(scope, corpus.start);
 
   const system = [
     "你是用户的本地学习和任务复盘助手。",
-    `回答必须优先依据${scopeLabel}任务和每日小结语料，允许结合常规知识解释概念，但不要编造用户没有记录过的个人事实。`,
+    `回答必须优先依据${scopeLabel}当天总结和该范围内 AI 对话记录，允许结合常规知识解释概念，但不要编造用户没有记录过的个人事实。`,
     `${scopeLabel}范围：${corpus.start} 至 ${corpus.end}`,
-    `${scopeLabel}任务：${JSON.stringify(corpus.tasks, null, 2)}`,
-    `${scopeLabel}小结：${JSON.stringify(corpus.summaries, null, 2)}`
+    `${scopeLabel}当天总结：${JSON.stringify(corpus.summaries, null, 2)}`
   ].join("\n\n");
 
   const answer = await callLlm([
     { role: "system", content: system },
-    { role: "user", content }
+    ...messages.map((message) => ({ role: message.role, content: message.content }))
   ]);
 
   db.prepare("insert into chat_messages (week_start, scope_type, scope_start, role, content) values (?, ?, ?, 'assistant', ?)")

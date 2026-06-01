@@ -634,6 +634,24 @@ function App() {
     }
   }
 
+  async function clearRangeMessages() {
+    const scope = scopeFromView(view);
+    const label = scope === "month" ? "本月" : "本周";
+    const confirmed = window.confirm(`清空${label}的 AI 对话记录？这会影响后续${label}总结可参考的对话语料。`);
+    if (!confirmed) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/api/${scope}/${date}/messages`, { method: "DELETE" });
+      setMessages([]);
+      setNotice(`${label} AI 对话记录已清空。`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "清空对话失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function sendChat() {
     if (!chatDraft.trim()) return;
     const scope = scopeFromView(view);
@@ -914,6 +932,8 @@ function App() {
             chatDraft={chatDraft}
             setChatDraft={setChatDraft}
             generateRange={generateRange}
+            clearRangeSummary={() => setRangeSummary("")}
+            clearRangeMessages={clearRangeMessages}
             sendChat={sendChat}
             busy={busy}
             aiDisabled={aiDisabled}
@@ -1095,11 +1115,26 @@ function RangeView(props: {
   chatDraft: string;
   setChatDraft: (value: string) => void;
   generateRange: () => void;
+  clearRangeSummary: () => void;
+  clearRangeMessages: () => void;
   sendChat: () => void;
   busy: boolean;
   aiDisabled: boolean;
 }) {
-  const { scope, date, summary, messages, chatDraft, setChatDraft, generateRange, sendChat, busy, aiDisabled } = props;
+  const {
+    scope,
+    date,
+    summary,
+    messages,
+    chatDraft,
+    setChatDraft,
+    generateRange,
+    clearRangeSummary,
+    clearRangeMessages,
+    sendChat,
+    busy,
+    aiDisabled
+  } = props;
   const label = scope === "month" ? "月总结" : "周总结";
   const title = rangeTitle(scope, date);
   const summaryHtml = useMemo(() => (summary ? md.render(summary) : ""), [summary]);
@@ -1112,14 +1147,19 @@ function RangeView(props: {
             <p className="eyebrow">{scope === "month" ? "Monthly synthesis" : "Weekly synthesis"}</p>
             <h2>{title}</h2>
           </div>
-          <button className="primary" onClick={generateRange} disabled={aiDisabled}>
-            <Sparkles size={16} /> 生成{label}
-          </button>
+          <div className="panelActions">
+            <button className="iconText" onClick={clearRangeSummary} disabled={!summary || busy}>
+              <Trash2 size={15} /> 清空
+            </button>
+            <button className="primary" onClick={generateRange} disabled={aiDisabled}>
+              <Sparkles size={16} /> 生成{label}
+            </button>
+          </div>
         </div>
         {summaryHtml ? (
           <div className="weeklyRendered markdown readableMarkdown" dangerouslySetInnerHTML={{ __html: summaryHtml }} />
         ) : (
-          <pre className="weeklyText">{`切到${label}后会显示当前范围的本地语料概览。`}</pre>
+          <div className="weeklyText emptyRange" />
         )}
       </section>
 
@@ -1127,6 +1167,9 @@ function RangeView(props: {
         <div className="chatTitle">
           <MessageSquareText size={18} />
           <h3>{scope === "month" ? "本月语料对话" : "本周语料对话"}</h3>
+          <button className="iconText dangerText compactAction" onClick={clearRangeMessages} disabled={!messages.length || busy}>
+            <Trash2 size={14} /> 清空
+          </button>
         </div>
         <div className="messages">
           {messages.length ? (

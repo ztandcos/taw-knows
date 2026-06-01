@@ -567,6 +567,14 @@ summary:focus-visible {
   margin-bottom: 18px;
 }
 
+.panelActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .eyebrow {
   color: var(--color-primary);
   font-size: 12px;
@@ -868,10 +876,31 @@ textarea {
   color: var(--color-text-dark);
 }
 
+.weeklyText.emptyRange {
+  min-height: 320px;
+  background:
+    linear-gradient(var(--color-panel-soft), var(--color-panel-soft)) padding-box,
+    repeating-linear-gradient(
+      180deg,
+      transparent 0,
+      transparent 31px,
+      color-mix(in srgb, var(--color-border) 58%, transparent) 32px
+    ) border-box;
+}
+
 .chatTitle {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.chatTitle h3 {
+  flex: 1;
+}
+
+.compactAction {
+  min-height: 34px;
+  font-size: 13px;
 }
 
 .message span {
